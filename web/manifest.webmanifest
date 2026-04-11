@@ -1,0 +1,26 @@
+{
+  "name": "Rush Hour Slip - 満員電車すり抜け",
+  "short_name": "ラッシュ回避",
+  "id": "/rush-hour-slip/",
+  "description": "満員電車の人波を左右にすり抜けてホームを目指す、日本語UIのカジュアルゲーム試作。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08111b",
+  "theme_color": "#08111b",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

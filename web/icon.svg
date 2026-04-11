@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rush Hour Slip icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7be8ff"/>
+      <stop offset="55%" stop-color="#0f2940"/>
+      <stop offset="100%" stop-color="#08111b"/>
+    </linearGradient>
+    <linearGradient id="rail" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffd36e"/>
+      <stop offset="100%" stop-color="#ff9252"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+  <path d="M140 96h232c17 0 32 15 32 32v106c0 18-15 32-32 32H140c-18 0-32-14-32-32V128c0-17 14-32 32-32Z" fill="rgba(255,255,255,0.16)"/>
+  <path d="M110 390c48-33 102-50 146-50 46 0 100 17 146 50" fill="none" stroke="url(#rail)" stroke-width="38" stroke-linecap="round"/>
+  <path d="M186 418 132 484M326 418l54 66" fill="none" stroke="url(#rail)" stroke-width="34" stroke-linecap="round"/>
+  <text x="256" y="235" fill="#eef6ff" font-family="Bahnschrift, 'Yu Gothic UI', sans-serif" font-size="116" font-weight="700" text-anchor="middle" letter-spacing="14">RS</text>
+</svg>

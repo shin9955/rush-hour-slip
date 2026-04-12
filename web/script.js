@@ -1,18 +1,60 @@
 const STORAGE_KEYS = {
-  bestDistance: "rush-hour-slip-best-distance",
+  bestStage: "rush-hour-slip-best-stage",
   audioEnabled: "rush-hour-slip-audio-enabled"
 };
 
 const CONFIG = {
   laneCount: 5,
-  targetDistance: 1250,
-  baseSpeed: 30,
-  speedRamp: 0.78,
-  spawnBase: 0.84,
-  spawnMin: 0.28,
-  obstacleBaseSpeed: 300,
-  obstacleRamp: 36,
-  maxCrowdLevel: 8
+  renderDistance: 160,
+  collisionDepth: 8,
+  baseStageLength: 360,
+  stageLengthStep: 72,
+  baseSpeed: 34,
+  speedStep: 4,
+  columnSpacing: 36
+};
+
+const STATION_THEMES = [
+  {
+    station: "東京",
+    line: "山手線",
+    destination: "上野・池袋方面",
+    platform: "3番線",
+    routeTitle: "中央改札から3番線ホームへ",
+    routeText: "柱と待機列の隙間を抜け、ホーム先頭寄りで停車中の列車へ飛び込む。"
+  },
+  {
+    station: "品川",
+    line: "京浜東北線",
+    destination: "大宮方面",
+    platform: "5番線",
+    routeTitle: "乗換通路を横切って5番線へ",
+    routeText: "ベンチと案内板の間を抜ける。視界の奥に見える銀色の編成がゴール。"
+  },
+  {
+    station: "新宿",
+    line: "中央線快速",
+    destination: "東京方面",
+    platform: "11番線",
+    routeTitle: "連絡通路の密集帯を突破する",
+    routeText: "人の列が急に絞られる。早めに空きレーンを読んでホーム中央へ寄せる。"
+  },
+  {
+    station: "渋谷",
+    line: "埼京線",
+    destination: "大崎方面",
+    platform: "2番線",
+    routeTitle: "広いコンコースを縫ってホームへ滑り込む",
+    routeText: "清掃カートと工事サインが増える。止まらず、一直線に停車列車まで走り切る。"
+  }
+];
+
+const OBSTACLE_TYPES = {
+  crowd: { id: "crowd" },
+  bench: { id: "bench" },
+  sign: { id: "sign" },
+  luggage: { id: "luggage" },
+  cart: { id: "cart" }
 };
 
 const TRACKS = {
@@ -28,18 +70,18 @@ const TRACKS = {
   },
   play: {
     label: "走行BGM",
-    tempo: 126,
+    tempo: 132,
     root: 164.81,
     length: 16,
     channels: [
-      { wave: "square", volume: 0.02, sustain: 0.5, filter: 620, pattern: [0, null, 0, null, 3, null, 5, null, 0, null, 0, null, 7, null, 5, null] },
-      { wave: "triangle", volume: 0.018, sustain: 0.55, root: 329.63, pattern: [7, 10, 12, 10, 7, 10, 14, 10, 7, 10, 15, 10, 7, 10, 14, 12] },
-      { wave: "sine", volume: 0.012, sustain: 0.35, root: 659.25, pattern: [19, null, 17, null, 19, null, 22, null, 19, null, 17, null, 24, null, 22, null] }
+      { wave: "square", volume: 0.018, sustain: 0.48, filter: 720, pattern: [0, null, 0, null, 3, null, 5, null, 0, null, 7, null, 5, null, 3, null] },
+      { wave: "triangle", volume: 0.016, sustain: 0.54, root: 329.63, pattern: [7, 10, 12, 10, 7, 10, 14, 10, 7, 10, 15, 10, 7, 10, 14, 12] },
+      { wave: "sine", volume: 0.011, sustain: 0.32, root: 659.25, pattern: [19, null, 17, null, 19, null, 22, null, 19, null, 17, null, 24, null, 22, null] }
     ]
   },
   clear: {
     label: "クリアBGM",
-    tempo: 134,
+    tempo: 136,
     root: 196,
     length: 16,
     channels: [
@@ -49,7 +91,7 @@ const TRACKS = {
   },
   fail: {
     label: "リザルトBGM",
-    tempo: 80,
+    tempo: 82,
     root: 146.83,
     length: 16,
     channels: [
@@ -70,38 +112,43 @@ const ui = {
   overlayFacts: document.querySelector("#overlayFacts"),
   primaryButton: document.querySelector("#primaryButton"),
   audioToggle: document.querySelector("#audioToggle"),
+  stageValue: document.querySelector("#stageValue"),
+  lineValue: document.querySelector("#lineValue"),
   remainingValue: document.querySelector("#remainingValue"),
-  crowdValue: document.querySelector("#crowdValue"),
+  hazardValue: document.querySelector("#hazardValue"),
   bestValue: document.querySelector("#bestValue"),
-  trackValue: document.querySelector("#trackValue"),
   sceneLabel: document.querySelector("#sceneLabel"),
   hintText: document.querySelector("#hintText"),
-  leftButton: document.querySelector("#leftButton"),
-  rightButton: document.querySelector("#rightButton")
+  routeTitle: document.querySelector("#routeTitle"),
+  routeText: document.querySelector("#routeText"),
+  stationValue: document.querySelector("#stationValue"),
+  platformValue: document.querySelector("#platformValue"),
+  destinationValue: document.querySelector("#destinationValue")
 };
 
 const state = {
   scene: "title",
   running: false,
   lastTime: 0,
-  elapsed: 0,
+  stageNumber: 1,
+  stageSpec: null,
   distance: 0,
-  crowdLevel: 1,
-  spawnTimer: 0,
+  stageElapsed: 0,
   flashTimer: 0,
-  bestDistance: Number.parseInt(localStorage.getItem(STORAGE_KEYS.bestDistance) || "0", 10),
-  laneWidth: 0,
-  playerY: 0,
-  pointerStartX: null,
+  bestStage: Number.parseInt(localStorage.getItem(STORAGE_KEYS.bestStage) || "1", 10),
+  pointerId: null,
   obstacles: [],
   particles: [],
-  player: { lane: 2, x: 0, targetX: 0, width: 48, height: 74 }
+  player: {
+    lane: 2,
+    lean: 0
+  }
 };
 
 class MusicController {
-  constructor(onTrackChange) {
-    this.ctx = window.AudioContext ? new AudioContext() : null;
-    this.onTrackChange = onTrackChange;
+  constructor() {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    this.ctx = AudioContextCtor ? new AudioContextCtor() : null;
     this.enabled = localStorage.getItem(STORAGE_KEYS.audioEnabled) !== "off";
     this.currentTrack = "title";
     this.timerId = null;
@@ -138,7 +185,6 @@ class MusicController {
   setTrack(trackName) {
     this.currentTrack = trackName;
     this.step = 0;
-    this.onTrackChange(TRACKS[trackName].label);
     if (this.enabled && this.userActivated) {
       this.startLoop();
     } else {
@@ -204,10 +250,10 @@ class MusicController {
       return;
     }
     const cueMap = {
-      move: { wave: "triangle", start: 520, end: 660, duration: 0.06, volume: 0.028 },
-      start: { wave: "square", start: 420, end: 520, duration: 0.1, volume: 0.032 },
-      hit: { wave: "sawtooth", start: 180, end: 120, duration: 0.16, volume: 0.04 },
-      clear: { wave: "sine", start: 660, end: 880, duration: 0.22, volume: 0.035 }
+      move: { wave: "triangle", start: 540, end: 700, duration: 0.05, volume: 0.024 },
+      start: { wave: "square", start: 380, end: 520, duration: 0.1, volume: 0.03 },
+      hit: { wave: "sawtooth", start: 170, end: 110, duration: 0.18, volume: 0.04 },
+      clear: { wave: "sine", start: 640, end: 900, duration: 0.22, volume: 0.032 }
     };
     const cue = cueMap[kind];
     if (!cue) {
@@ -225,34 +271,104 @@ class MusicController {
     oscillator.connect(gain);
     gain.connect(this.ctx.destination);
     oscillator.start(now);
-    oscillator.stop(now + cue.duration + 0.02);
+    oscillator.stop(now + cue.duration + 0.03);
   }
 }
 
-const music = new MusicController((trackLabel) => {
-  ui.trackValue.textContent = trackLabel;
-});
+const music = new MusicController();
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function laneCenter(lane) {
-  return state.laneWidth * lane + state.laneWidth / 2;
+function lerp(start, end, amount) {
+  return start + (end - start) * amount;
 }
 
-function resizeCanvas() {
-  const ratio = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.round(rect.width * ratio);
-  canvas.height = Math.round(rect.height * ratio);
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  state.laneWidth = rect.width / CONFIG.laneCount;
-  state.playerY = rect.height - 132;
-  state.player.targetX = laneCenter(state.player.lane);
-  if (!state.running) {
-    state.player.x = state.player.targetX;
+function laneCenterAtWidth(lane, roadWidth, canvasWidth) {
+  const centerIndex = (CONFIG.laneCount - 1) / 2;
+  const normalized = (lane - centerIndex) / centerIndex;
+  return canvasWidth * 0.5 + normalized * roadWidth * 0.43;
+}
+
+function projectDepth(relativeZ, width, height) {
+  const clamped = clamp(relativeZ, 0, CONFIG.renderDistance);
+  const ratio = 1 - clamped / CONFIG.renderDistance;
+  const eased = Math.pow(ratio, 1.35);
+  return {
+    depth: eased,
+    y: lerp(height * 0.2, height * 0.93, eased),
+    width: lerp(width * 0.14, width * 0.9, eased)
+  };
+}
+
+function currentTheme(stageNumber) {
+  return STATION_THEMES[(stageNumber - 1) % STATION_THEMES.length];
+}
+
+function pickObstacleType(stageNumber, rowIndex, lane) {
+  const pool = ["crowd", "sign", "luggage"];
+  if (stageNumber >= 2) {
+    pool.push("bench");
   }
+  if (stageNumber >= 3) {
+    pool.push("cart");
+  }
+  if ((rowIndex + lane) % 4 === 0) {
+    pool.push("crowd");
+  }
+  return OBSTACLE_TYPES[pool[Math.floor(Math.random() * pool.length)]];
+}
+
+function chooseLaneShift(stageNumber) {
+  const bag = stageNumber >= 5
+    ? [0, 0, 1, -1, 1, -1, 2, -2]
+    : [0, 0, 0, 1, -1, 1, -1];
+  return bag[Math.floor(Math.random() * bag.length)];
+}
+
+function buildStage(stageNumber) {
+  const theme = currentTheme(stageNumber);
+  const length = CONFIG.baseStageLength + (stageNumber - 1) * CONFIG.stageLengthStep;
+  const speed = CONFIG.baseSpeed + (stageNumber - 1) * CONFIG.speedStep;
+  const hazard = clamp(1 + Math.floor((stageNumber - 1) * 0.75), 1, 9);
+  const spacingBase = Math.max(16, 30 - stageNumber * 1.2);
+  const extraSafeChance = Math.max(0.42 - stageNumber * 0.045, 0.08);
+  const obstacles = [];
+  let safeLane = 2;
+  let z = 56;
+  let rowIndex = 0;
+
+  while (z < length - 50) {
+    safeLane = clamp(safeLane + chooseLaneShift(stageNumber), 0, CONFIG.laneCount - 1);
+    const freeLanes = new Set([safeLane]);
+    if (Math.random() < extraSafeChance) {
+      freeLanes.add(clamp(safeLane + (Math.random() < 0.5 ? -1 : 1), 0, CONFIG.laneCount - 1));
+    }
+
+    for (let lane = 0; lane < CONFIG.laneCount; lane += 1) {
+      if (freeLanes.has(lane)) {
+        continue;
+      }
+      obstacles.push({
+        lane,
+        z,
+        type: pickObstacleType(stageNumber, rowIndex, lane)
+      });
+    }
+
+    z += spacingBase + Math.random() * 10 + (rowIndex % 3 === 0 ? 6 : 0);
+    rowIndex += 1;
+  }
+
+  return {
+    stageNumber,
+    theme,
+    length,
+    speed,
+    hazard,
+    obstacles
+  };
 }
 
 function updateAudioButton() {
@@ -261,10 +377,22 @@ function updateAudioButton() {
 }
 
 function updateHud() {
-  const remaining = Math.max(0, CONFIG.targetDistance - Math.floor(state.distance));
+  const spec = state.stageSpec || buildStage(state.stageNumber);
+  const remaining = Math.max(0, Math.ceil(spec.length - state.distance));
+  ui.stageValue.textContent = String(state.stageNumber);
+  ui.lineValue.textContent = spec.theme.line;
   ui.remainingValue.textContent = `${remaining}m`;
-  ui.crowdValue.textContent = `Lv.${state.crowdLevel}`;
-  ui.bestValue.textContent = `${state.bestDistance}m`;
+  ui.hazardValue.textContent = `Lv.${spec.hazard}`;
+  ui.bestValue.textContent = `STAGE ${state.bestStage}`;
+}
+
+function updateRoutePanel() {
+  const spec = state.stageSpec || buildStage(state.stageNumber);
+  ui.routeTitle.textContent = spec.theme.routeTitle;
+  ui.routeText.textContent = spec.theme.routeText;
+  ui.stationValue.textContent = spec.theme.station;
+  ui.platformValue.textContent = spec.theme.platform;
+  ui.destinationValue.textContent = spec.theme.destination;
 }
 
 function setOverlay(visible) {
@@ -275,21 +403,21 @@ function renderOverlayFacts(facts) {
   ui.overlayFacts.innerHTML = facts.map((fact) => `<div><dt>${fact.label}</dt><dd>${fact.value}</dd></div>`).join("");
 }
 
-function setScene(sceneName) {
+function setScene(sceneName, detailText = "") {
   state.scene = sceneName;
-  document.body.dataset.scene = sceneName;
+  const spec = state.stageSpec || buildStage(state.stageNumber);
 
   if (sceneName === "title") {
-    ui.sceneLabel.textContent = "タイトル";
-    ui.hintText.textContent = "左右ボタンかスワイプで人波を避けます。";
-    ui.overlayTag.textContent = "Play Store Ready Prototype";
-    ui.overlayTitle.textContent = "ホームまで、人波を抜けろ。";
-    ui.overlayText.textContent = "左右にすり抜けて、停車前にホーム位置までたどり着く短時間ゲームです。日本語UI、オフライン前提、外部APIなしで構成しています。";
-    ui.primaryButton.textContent = "プレイ開始";
+    ui.sceneLabel.textContent = "始発前";
+    ui.hintText.textContent = "画面の行きたい位置をタップすると、そのレーンへすぐ寄せます。";
+    ui.overlayTag.textContent = "Stage Runner Prototype";
+    ui.overlayTitle.textContent = "列車のドアまで駅構内を駆け抜けろ";
+    ui.overlayText.textContent = "プレイヤーが前へ走り続け、障害物のないレーンへ自分で飛び込みます。停車中の列車に乗れたらクリア、次のステージでは通路密度と障害物のいやらしさが一段上がります。";
+    ui.primaryButton.textContent = "出発する";
     renderOverlayFacts([
-      { label: "配布前提", value: "Play ストア / 縦持ち" },
-      { label: "操作", value: "左右ボタン / スワイプ" },
-      { label: "BGM", value: "タイトル / 走行 / 結果" }
+      { label: "視点", value: "三人称ラン" },
+      { label: "操作", value: "画面タップ / 指スライド" },
+      { label: "次の列車", value: `${spec.theme.line} ${spec.theme.destination}` }
     ]);
     setOverlay(true);
     music.setTrack("title");
@@ -297,144 +425,63 @@ function setScene(sceneName) {
   }
 
   if (sceneName === "play") {
-    ui.sceneLabel.textContent = "走行中";
-    ui.hintText.textContent = "ぶつからないよう、少し早めにレーンを切り替えます。";
+    ui.sceneLabel.textContent = `STAGE ${state.stageNumber}`;
+    ui.hintText.textContent = "タップしたレーンへ即座に移動。指を滑らせると連続で寄せられます。";
     setOverlay(false);
     music.setTrack("play");
     return;
   }
 
-  const reachedDistance = clamp(Math.floor(state.distance), 0, CONFIG.targetDistance);
-  const elapsedText = `${state.elapsed.toFixed(1)}秒`;
-  const isClear = sceneName === "clear";
-  ui.sceneLabel.textContent = isClear ? "到着" : "失敗";
-  ui.hintText.textContent = isClear ? "ホームに滑り込みました。" : "少し早めの回避で通しやすくなります。";
-  ui.overlayTag.textContent = isClear ? "Platform Clear" : "Crushed";
-  ui.overlayTitle.textContent = isClear ? "ホームに到着。" : "人波に飲まれた。";
-  ui.overlayText.textContent = isClear
-    ? `到達時間 ${elapsedText}。短いプレイでも達成感が出るように、最後までテンポを落とさない構成です。`
-    : `到達距離 ${reachedDistance}m。混雑が上がる前に次の安全レーンを見つけると抜けやすくなります。`;
-  ui.primaryButton.textContent = "もう一回";
+  if (sceneName === "clear") {
+    ui.sceneLabel.textContent = "乗車成功";
+    ui.hintText.textContent = "次の列車はさらに混雑します。ルートを早めに読みます。";
+    ui.overlayTag.textContent = "Boarding Complete";
+    ui.overlayTitle.textContent = `STAGE ${state.stageNumber} クリア`;
+    ui.overlayText.textContent = detailText || "停車中の列車へ飛び込みました。次のステージではホームが長くなり、通路の詰まり方も厳しくなります。";
+    ui.primaryButton.textContent = "次の列車へ";
+    renderOverlayFacts([
+      { label: "到達駅", value: spec.theme.station },
+      { label: "列車", value: `${spec.theme.line} ${spec.theme.destination}` },
+      { label: "最高到達", value: `STAGE ${state.bestStage}` }
+    ]);
+    setOverlay(true);
+    music.setTrack("clear");
+    return;
+  }
+
+  ui.sceneLabel.textContent = "接触";
+  ui.hintText.textContent = "安全レーンを先に見つけるほど立て直しやすくなります。";
+  ui.overlayTag.textContent = "Blocked";
+  ui.overlayTitle.textContent = `STAGE ${state.stageNumber} やり直し`;
+  ui.overlayText.textContent = detailText || "通路の障害物にぶつかりました。狭まるレーンを見て、早めに空きへ寄せ直します。";
+  ui.primaryButton.textContent = "同じステージに再挑戦";
   renderOverlayFacts([
-    { label: "到達距離", value: `${reachedDistance}m` },
-    { label: "ベスト", value: `${state.bestDistance}m` },
-    { label: "BGM", value: TRACKS[sceneName].label }
+    { label: "現在地", value: spec.theme.station },
+    { label: "目標ホーム", value: spec.theme.platform },
+    { label: "最高到達", value: `STAGE ${state.bestStage}` }
   ]);
   setOverlay(true);
-  music.setTrack(isClear ? "clear" : "fail");
-}
-
-function resetGame() {
-  state.running = true;
-  state.lastTime = 0;
-  state.elapsed = 0;
-  state.distance = 0;
-  state.crowdLevel = 1;
-  state.spawnTimer = 0;
-  state.flashTimer = 0;
-  state.obstacles = [];
-  state.particles = [];
-  state.player.lane = 2;
-  state.player.targetX = laneCenter(state.player.lane);
-  state.player.x = state.player.targetX;
-  updateHud();
-  setScene("play");
-}
-
-function startGame() {
-  resetGame();
-  music.playCue("start");
-}
-
-function finishGame(cleared) {
-  if (!state.running) {
-    return;
-  }
-  state.running = false;
-  state.flashTimer = 0.26;
-  const reachedDistance = clamp(Math.floor(state.distance), 0, CONFIG.targetDistance);
-  if (reachedDistance > state.bestDistance) {
-    state.bestDistance = reachedDistance;
-    localStorage.setItem(STORAGE_KEYS.bestDistance, String(reachedDistance));
-  }
-  emitParticles(cleared ? "#abffb3" : "#ff6c8c", 24);
-  music.playCue(cleared ? "clear" : "hit");
-  updateHud();
-  setScene(cleared ? "clear" : "fail");
-}
-
-function movePlayer(direction) {
-  if (!state.running) {
-    return;
-  }
-  const nextLane = clamp(state.player.lane + direction, 0, CONFIG.laneCount - 1);
-  if (nextLane === state.player.lane) {
-    return;
-  }
-  state.player.lane = nextLane;
-  state.player.targetX = laneCenter(nextLane);
-  emitParticles("#7be8ff", 8);
-  music.playCue("move");
+  music.setTrack("fail");
 }
 
 function emitParticles(color, count) {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const roadWidth = width * 0.84;
+  const x = laneCenterAtWidth(state.player.lane, roadWidth, width);
+  const y = height * 0.86;
+
   for (let index = 0; index < count; index += 1) {
     state.particles.push({
-      x: state.player.x + (Math.random() - 0.5) * 28,
-      y: state.playerY + state.player.height * 0.32,
-      vx: (Math.random() - 0.5) * 90,
-      vy: 20 + Math.random() * 120,
-      size: 2 + Math.random() * 3.8,
-      life: 0.28 + Math.random() * 0.4,
+      x: x + (Math.random() - 0.5) * 18,
+      y: y + (Math.random() - 0.5) * 10,
+      vx: (Math.random() - 0.5) * 80,
+      vy: -40 - Math.random() * 80,
+      size: 2 + Math.random() * 3,
+      life: 0.22 + Math.random() * 0.32,
       color
     });
   }
-}
-
-function shuffle(items) {
-  for (let index = items.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
-  }
-}
-
-function spawnRow() {
-  const lanes = [0, 1, 2, 3, 4];
-  shuffle(lanes);
-  const maxBlocked = state.crowdLevel >= 5 ? 4 : 3;
-  const blockedCount = clamp(
-    1 + Math.floor(Math.random() * (1 + Math.min(maxBlocked, 1 + Math.floor(state.crowdLevel / 2)))),
-    1,
-    CONFIG.laneCount - 1
-  );
-  const blocked = lanes.slice(0, blockedCount);
-
-  blocked.forEach((lane, index) => {
-    state.obstacles.push({
-      lane,
-      x: laneCenter(lane),
-      y: -100 - index * 10,
-      width: state.laneWidth * (0.72 + Math.random() * 0.12),
-      height: 82 + Math.random() * 18,
-      speed: CONFIG.obstacleBaseSpeed + state.crowdLevel * CONFIG.obstacleRamp + Math.random() * 42,
-      sway: Math.random() * Math.PI * 2,
-      tint: Math.random() > 0.45 ? "#7bc8ff" : "#ff6c8c"
-    });
-  });
-}
-
-function checkCollision(obstacle) {
-  const playerLeft = state.player.x - state.player.width / 2;
-  const playerTop = state.playerY - state.player.height / 2;
-  const obstacleLeft = obstacle.x - obstacle.width / 2;
-  const obstacleTop = obstacle.y - obstacle.height / 2;
-
-  return (
-    playerLeft < obstacleLeft + obstacle.width &&
-    playerLeft + state.player.width > obstacleLeft &&
-    playerTop < obstacleTop + obstacle.height &&
-    playerTop + state.player.height > obstacleTop
-  );
 }
 
 function updateParticles(delta) {
@@ -443,11 +490,76 @@ function updateParticles(delta) {
     particle.life -= delta;
     particle.x += particle.vx * delta;
     particle.y += particle.vy * delta;
+    particle.vy += 130 * delta;
   });
 }
 
+function startStage(stageNumber) {
+  state.stageNumber = stageNumber;
+  state.stageSpec = buildStage(stageNumber);
+  state.obstacles = state.stageSpec.obstacles;
+  state.distance = 0;
+  state.stageElapsed = 0;
+  state.flashTimer = 0;
+  state.running = true;
+  state.player.lane = 2;
+  state.player.lean = 0;
+  updateHud();
+  updateRoutePanel();
+  setScene("play");
+  music.playCue("start");
+}
+
+function finishStage(cleared, detailText) {
+  if (!state.running) {
+    return;
+  }
+  state.running = false;
+  state.flashTimer = 0.28;
+  if (cleared) {
+    state.bestStage = Math.max(state.bestStage, state.stageNumber);
+    localStorage.setItem(STORAGE_KEYS.bestStage, String(state.bestStage));
+    emitParticles("#9dffb8", 26);
+    music.playCue("clear");
+    updateHud();
+    setScene("clear", detailText);
+    return;
+  }
+
+  emitParticles("#ff7d98", 24);
+  music.playCue("hit");
+  updateHud();
+  setScene("fail", detailText);
+}
+
+function setPlayerLane(nextLane) {
+  const boundedLane = clamp(nextLane, 0, CONFIG.laneCount - 1);
+  if (boundedLane === state.player.lane) {
+    return;
+  }
+  const direction = boundedLane > state.player.lane ? 1 : -1;
+  state.player.lane = boundedLane;
+  state.player.lean = direction * 1.2;
+  emitParticles("#7be8ff", 7);
+  music.playCue("move");
+}
+
+function laneFromClientX(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = clamp((clientX - rect.left) / rect.width, 0, 0.9999);
+  return Math.floor(ratio * CONFIG.laneCount);
+}
+
+function resizeCanvas() {
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * ratio);
+  canvas.height = Math.round(rect.height * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+
 function updateGame(delta) {
-  state.player.x += (state.player.targetX - state.player.x) * Math.min(1, delta * 18);
+  state.player.lean += (0 - state.player.lean) * Math.min(1, delta * 14);
 
   if (!state.running) {
     state.flashTimer = Math.max(0, state.flashTimer - delta);
@@ -455,191 +567,305 @@ function updateGame(delta) {
     return;
   }
 
-  state.elapsed += delta;
-  state.distance += (CONFIG.baseSpeed + state.elapsed * CONFIG.speedRamp) * delta;
-  state.crowdLevel = 1 + Math.min(CONFIG.maxCrowdLevel - 1, Math.floor(state.distance / 170));
+  state.stageElapsed += delta;
+  state.distance = Math.min(state.stageSpec.length, state.distance + state.stageSpec.speed * delta);
   state.flashTimer = Math.max(0, state.flashTimer - delta);
 
-  if (state.distance >= CONFIG.targetDistance) {
-    finishGame(true);
-    return;
-  }
-
-  const spawnInterval = Math.max(CONFIG.spawnMin, CONFIG.spawnBase - state.crowdLevel * 0.062);
-  state.spawnTimer += delta;
-  if (state.spawnTimer >= spawnInterval) {
-    spawnRow();
-    state.spawnTimer = 0;
-  }
-
-  const stageHeight = canvas.clientHeight;
-  state.obstacles = state.obstacles.filter((obstacle) => obstacle.y < stageHeight + 130);
   for (const obstacle of state.obstacles) {
-    obstacle.y += obstacle.speed * delta;
-    obstacle.x = laneCenter(obstacle.lane) + Math.sin(state.elapsed * 1.7 + obstacle.sway) * 5;
-    if (checkCollision(obstacle)) {
-      finishGame(false);
+    const relativeZ = obstacle.z - state.distance;
+    if (relativeZ < -6 || relativeZ > CONFIG.collisionDepth) {
+      continue;
+    }
+    if (obstacle.lane === state.player.lane) {
+      finishStage(false, "目前の障害物を避け切れませんでした。早めに空きレーンへ寄せると読みやすくなります。");
       break;
     }
+  }
+
+  if (state.running && state.distance >= state.stageSpec.length) {
+    finishStage(true, "停車中の列車へ滑り込みました。次のホームはさらに遠く、通路の詰まり方もきつくなります。");
   }
 
   updateParticles(delta);
   updateHud();
 }
 
-function roundRect(x, y, width, height, radius) {
+function drawQuad(x1, y1, x2, y2, x3, y3, x4, y4) {
   ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + width, y, x + width, y + height, radius);
-  ctx.arcTo(x + width, y + height, x, y + height, radius);
-  ctx.arcTo(x, y + height, x, y, radius);
-  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineTo(x3, y3);
+  ctx.lineTo(x4, y4);
   ctx.closePath();
 }
 
-function drawBackground(width, height) {
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, "#35506d");
-  gradient.addColorStop(0.26, "#1b2d40");
-  gradient.addColorStop(1, "#06111b");
-  ctx.fillStyle = gradient;
+function drawStationBackground(width, height) {
+  const ceilingGradient = ctx.createLinearGradient(0, 0, 0, height);
+  ceilingGradient.addColorStop(0, "#304d69");
+  ceilingGradient.addColorStop(0.28, "#1a3145");
+  ceilingGradient.addColorStop(1, "#07111a");
+  ctx.fillStyle = ceilingGradient;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.fillStyle = "rgba(255, 230, 180, 0.14)";
-  ctx.fillRect(0, 64, width, 5);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
+  drawQuad(width * 0.14, height * 0.18, width * 0.86, height * 0.18, width * 0.98, 0, width * 0.02, 0);
+  ctx.fill();
 
-  for (let index = 0; index < 5; index += 1) {
-    const x = 24 + index * (width - 48) / 4;
-    const sway = Math.sin(state.elapsed * 1.3 + index * 0.7) * 5;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, 68);
-    ctx.lineTo(x + sway, 136);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(255, 211, 110, 0.25)";
-    ctx.beginPath();
-    ctx.arc(x + sway, 156, 14, 0, Math.PI * 2);
+  for (let z = CONFIG.renderDistance; z > 0; z -= 8) {
+    const far = projectDepth(z, width, height);
+    const near = projectDepth(z - 8, width, height);
+    ctx.fillStyle = Math.floor(z / 8) % 2 === 0 ? "rgba(19, 32, 45, 0.88)" : "rgba(22, 37, 52, 0.92)";
+    drawQuad(
+      width * 0.5 - near.width * 0.5, near.y,
+      width * 0.5 + near.width * 0.5, near.y,
+      width * 0.5 + far.width * 0.5, far.y,
+      width * 0.5 - far.width * 0.5, far.y
+    );
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 214, 111, 0.26)";
+    drawQuad(
+      width * 0.5 - near.width * 0.11, near.y,
+      width * 0.5 - near.width * 0.06, near.y,
+      width * 0.5 - far.width * 0.06, far.y,
+      width * 0.5 - far.width * 0.11, far.y
+    );
+    ctx.fill();
+    drawQuad(
+      width * 0.5 + near.width * 0.06, near.y,
+      width * 0.5 + near.width * 0.11, near.y,
+      width * 0.5 + far.width * 0.11, far.y,
+      width * 0.5 + far.width * 0.06, far.y
+    );
+    ctx.fill();
   }
 
-  const stripeOffset = (state.elapsed * 260) % 72;
-  for (let index = -2; index < 16; index += 1) {
-    const y = index * 72 + stripeOffset;
-    ctx.fillStyle = index % 2 === 0 ? "rgba(255, 255, 255, 0.025)" : "rgba(255, 211, 110, 0.02)";
-    ctx.fillRect(0, y, width, 30);
-  }
-
-  ctx.fillStyle = "rgba(255, 211, 110, 0.2)";
-  ctx.fillRect(0, height - 78, width, 6);
-}
-
-function drawLanes(width, height) {
-  for (let lane = 0; lane < CONFIG.laneCount; lane += 1) {
-    const left = lane * state.laneWidth;
-    ctx.fillStyle = lane === state.player.lane ? "rgba(123, 232, 255, 0.05)" : "rgba(255, 255, 255, 0.01)";
-    ctx.fillRect(left, 0, state.laneWidth, height);
-  }
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
   ctx.lineWidth = 2;
-  ctx.setLineDash([14, 18]);
   for (let lane = 1; lane < CONFIG.laneCount; lane += 1) {
-    const x = lane * state.laneWidth;
+    const nearX = laneCenterAtWidth(lane - 0.5, width * 0.9, width);
+    const farX = laneCenterAtWidth(lane - 0.5, width * 0.14, width);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(nearX, height * 0.93);
+    ctx.lineTo(farX, height * 0.2);
     ctx.stroke();
   }
-  ctx.setLineDash([]);
+
+  for (let z = CONFIG.columnSpacing; z < CONFIG.renderDistance; z += CONFIG.columnSpacing) {
+    const offset = z - (state.distance % CONFIG.columnSpacing);
+    if (offset <= 0 || offset > CONFIG.renderDistance) {
+      continue;
+    }
+    drawColumns(offset, width, height);
+  }
+
+  drawOverheadSigns(width, height);
+  drawArrivalTrain(width, height);
 }
 
-function drawRouteBar(width) {
-  const barX = 18;
-  const barY = 20;
-  const barWidth = width - 36;
-  const progress = clamp(state.distance / CONFIG.targetDistance, 0, 1);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-  roundRect(barX, barY, barWidth, 12, 999);
-  ctx.fill();
-  const fillGradient = ctx.createLinearGradient(barX, barY, barX + barWidth, barY);
-  fillGradient.addColorStop(0, "#7be8ff");
-  fillGradient.addColorStop(1, "#ffd36e");
-  ctx.fillStyle = fillGradient;
-  roundRect(barX, barY, barWidth * progress, 12, 999);
-  ctx.fill();
+function drawColumns(relativeZ, width, height) {
+  const projection = projectDepth(relativeZ, width, height);
+  const baseY = projection.y;
+  const columnHeight = lerp(18, 160, projection.depth);
+  const columnWidth = lerp(4, 28, projection.depth);
+  const leftX = width * 0.5 - projection.width * 0.62;
+  const rightX = width * 0.5 + projection.width * 0.62 - columnWidth;
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-  ctx.font = '700 12px "BIZ UDPGothic", "Yu Gothic UI", sans-serif';
-  ctx.fillText("Platform 3", barX, 54);
-  ctx.textAlign = "right";
-  ctx.fillText(`あと ${Math.max(0, CONFIG.targetDistance - Math.floor(state.distance))}m`, barX + barWidth, 54);
-  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(77, 96, 114, 0.95)";
+  ctx.fillRect(leftX, baseY - columnHeight, columnWidth, columnHeight);
+  ctx.fillRect(rightX, baseY - columnHeight, columnWidth, columnHeight);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.fillRect(leftX + 2, baseY - columnHeight, 2, columnHeight);
+  ctx.fillRect(rightX + 2, baseY - columnHeight, 2, columnHeight);
 }
 
-function drawCrowd(obstacle) {
-  const left = obstacle.x - obstacle.width / 2;
-  const top = obstacle.y - obstacle.height / 2;
-  const headCount = clamp(Math.round(obstacle.width / 34), 2, 4);
-  const gap = obstacle.width / (headCount + 1);
+function drawOverheadSigns(width, height) {
+  [120, 78, 38].forEach((depth, index) => {
+    const relativeZ = depth + index * 22 - (state.distance % 6);
+    if (relativeZ <= 6 || relativeZ >= CONFIG.renderDistance) {
+      return;
+    }
+
+    const projection = projectDepth(relativeZ, width, height);
+    const boardWidth = lerp(40, 170, projection.depth);
+    const boardHeight = lerp(12, 44, projection.depth);
+    const x = width * 0.5 - boardWidth * 0.5;
+    const y = projection.y - lerp(52, 220, projection.depth);
+
+    ctx.fillStyle = "rgba(11, 27, 40, 0.94)";
+    ctx.fillRect(x, y, boardWidth, boardHeight);
+    ctx.strokeStyle = "rgba(125, 240, 161, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, boardWidth, boardHeight);
+
+    ctx.fillStyle = "#dff9ff";
+    ctx.font = `${Math.round(lerp(8, 18, projection.depth))}px "Yu Gothic UI", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(state.stageSpec.theme.platform, x + boardWidth * 0.5, y + boardHeight * 0.46);
+    ctx.fillStyle = "#7df0a1";
+    ctx.font = `${Math.round(lerp(6, 14, projection.depth))}px "Yu Gothic UI", sans-serif`;
+    ctx.fillText(state.stageSpec.theme.line, x + boardWidth * 0.5, y + boardHeight * 0.8);
+    ctx.textAlign = "left";
+  });
+}
+
+function drawArrivalTrain(width, height) {
+  const relativeZ = state.stageSpec.length - state.distance + 18;
+  if (relativeZ > CONFIG.renderDistance + 12) {
+    return;
+  }
+
+  const projection = projectDepth(Math.max(relativeZ, 6), width, height);
+  const trainWidth = lerp(width * 0.18, width * 0.96, projection.depth);
+  const trainHeight = trainWidth * 0.7;
+  const x = width * 0.5 - trainWidth * 0.5;
+  const y = projection.y - trainHeight * 0.78;
+
+  ctx.fillStyle = "#b9c9d7";
+  ctx.fillRect(x, y, trainWidth, trainHeight);
+  ctx.fillStyle = "#12314a";
+  ctx.fillRect(x + trainWidth * 0.08, y + trainHeight * 0.12, trainWidth * 0.84, trainHeight * 0.22);
+
+  const doorWidth = trainWidth * 0.18;
+  const doorHeight = trainHeight * 0.48;
+  const doorGap = trainWidth * 0.09;
+  const doorStart = x + trainWidth * 0.14;
+  for (let index = 0; index < 3; index += 1) {
+    const doorX = doorStart + index * (doorWidth + doorGap);
+    ctx.fillStyle = index === 1 ? "rgba(125, 240, 161, 0.82)" : "rgba(42, 62, 81, 0.9)";
+    ctx.fillRect(doorX, y + trainHeight * 0.42, doorWidth, doorHeight);
+    if (index === 1) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+      ctx.fillRect(doorX + doorWidth * 0.14, y + trainHeight * 0.47, doorWidth * 0.72, doorHeight * 0.76);
+    }
+  }
+}
+
+function drawObstacle(obstacle, width, height) {
+  const relativeZ = obstacle.z - state.distance;
+  if (relativeZ <= 0 || relativeZ >= CONFIG.renderDistance) {
+    return;
+  }
+
+  const projection = projectDepth(relativeZ, width, height);
+  const x = laneCenterAtWidth(obstacle.lane, projection.width, width);
+  const baseY = projection.y;
+  const size = lerp(14, 104, projection.depth);
 
   ctx.save();
-  ctx.shadowBlur = 18;
-  ctx.shadowColor = obstacle.tint;
-  ctx.fillStyle = obstacle.tint;
-  roundRect(left, top + 18, obstacle.width, obstacle.height - 18, 18);
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = "rgba(0, 0, 0, 0.28)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
+  ctx.beginPath();
+  ctx.ellipse(x, baseY + 4, size * 0.7, size * 0.16, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  ctx.fillStyle = "rgba(7, 12, 20, 0.42)";
-  roundRect(left + 8, top + 26, obstacle.width - 16, obstacle.height - 34, 12);
-  ctx.fill();
-
-  for (let index = 0; index < headCount; index += 1) {
-    const headX = left + gap * (index + 1);
-    const bob = Math.sin(state.elapsed * 4 + obstacle.sway + index) * 2.5;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.beginPath();
-    ctx.arc(headX, top + 14 + bob, 7.5, 0, Math.PI * 2);
-    ctx.fill();
+  if (obstacle.type.id === "crowd") {
+    const bodyWidth = size * 0.26;
+    for (let index = -1; index <= 1; index += 1) {
+      const px = x + index * bodyWidth * 0.95;
+      ctx.fillStyle = index === 0 ? "#85d7ff" : "#ff9c7e";
+      ctx.beginPath();
+      ctx.arc(px, baseY - size * 0.88, size * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(225, 240, 255, 0.92)";
+      ctx.fillRect(px - bodyWidth * 0.28, baseY - size * 0.82, bodyWidth * 0.56, size * 0.44);
+      ctx.fillStyle = "#203447";
+      ctx.fillRect(px - bodyWidth * 0.22, baseY - size * 0.38, bodyWidth * 0.44, size * 0.36);
+    }
+    return;
   }
+
+  if (obstacle.type.id === "bench") {
+    ctx.fillStyle = "#e2a363";
+    ctx.fillRect(x - size * 0.32, baseY - size * 0.42, size * 0.64, size * 0.14);
+    ctx.fillStyle = "#76889a";
+    ctx.fillRect(x - size * 0.36, baseY - size * 0.28, size * 0.72, size * 0.12);
+    ctx.fillRect(x - size * 0.3, baseY - size * 0.18, size * 0.08, size * 0.22);
+    ctx.fillRect(x + size * 0.22, baseY - size * 0.18, size * 0.08, size * 0.22);
+    return;
+  }
+
+  if (obstacle.type.id === "sign") {
+    ctx.fillStyle = "#ffd66f";
+    ctx.beginPath();
+    ctx.moveTo(x, baseY - size * 0.82);
+    ctx.lineTo(x - size * 0.26, baseY - size * 0.18);
+    ctx.lineTo(x + size * 0.26, baseY - size * 0.18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#203447";
+    ctx.fillRect(x - size * 0.04, baseY - size * 0.18, size * 0.08, size * 0.18);
+    return;
+  }
+
+  if (obstacle.type.id === "cart") {
+    ctx.fillStyle = "#64d3d1";
+    ctx.fillRect(x - size * 0.34, baseY - size * 0.38, size * 0.68, size * 0.26);
+    ctx.strokeStyle = "#d8f8ff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - size * 0.34, baseY - size * 0.38, size * 0.68, size * 0.26);
+    ctx.beginPath();
+    ctx.arc(x - size * 0.2, baseY - size * 0.08, size * 0.06, 0, Math.PI * 2);
+    ctx.arc(x + size * 0.2, baseY - size * 0.08, size * 0.06, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+
+  ctx.fillStyle = "#d8a56f";
+  ctx.fillRect(x - size * 0.22, baseY - size * 0.34, size * 0.44, size * 0.28);
+  ctx.fillStyle = "#865f3b";
+  ctx.fillRect(x - size * 0.26, baseY - size * 0.12, size * 0.52, size * 0.12);
 }
 
-function drawPlayer() {
-  const left = state.player.x - state.player.width / 2;
-  const top = state.playerY - state.player.height / 2;
-  const glow = ctx.createRadialGradient(state.player.x, top + 24, 0, state.player.x, top + 24, 56);
-  glow.addColorStop(0, "rgba(255, 211, 110, 0.45)");
-  glow.addColorStop(1, "rgba(255, 211, 110, 0)");
-  ctx.fillStyle = glow;
+function drawPlayer(width, height) {
+  const x = laneCenterAtWidth(state.player.lane, width * 0.9, width);
+  const y = height * 0.86;
+  const stride = state.running ? Math.sin(state.stageElapsed * 11) : 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(state.player.lean * 0.1);
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
   ctx.beginPath();
-  ctx.arc(state.player.x, top + 28, 58, 0, Math.PI * 2);
+  ctx.ellipse(0, 10, 26, 10, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const bodyGradient = ctx.createLinearGradient(left, top, left, top + state.player.height);
-  bodyGradient.addColorStop(0, "#ffe694");
-  bodyGradient.addColorStop(1, "#ff9252");
-  ctx.fillStyle = bodyGradient;
-  roundRect(left, top + 16, state.player.width, state.player.height - 16, 16);
-  ctx.fill();
-
-  ctx.fillStyle = "rgba(7, 12, 20, 0.82)";
-  roundRect(left + 9, top + 28, state.player.width - 18, state.player.height - 34, 10);
-  ctx.fill();
-
-  ctx.fillStyle = "#fff7d7";
+  ctx.strokeStyle = "#0d2234";
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.arc(state.player.x, top + 10, 9, 0, Math.PI * 2);
+  ctx.moveTo(-8, -8);
+  ctx.lineTo(-16 + stride * 4, 22);
+  ctx.moveTo(8, -8);
+  ctx.lineTo(16 - stride * 4, 22);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffab63";
+  ctx.fillRect(-22, -58, 44, 40);
+  ctx.fillStyle = "#22364a";
+  ctx.fillRect(-18, -48, 36, 24);
+  ctx.fillStyle = "#ffdca7";
+  ctx.beginPath();
+  ctx.arc(0, -68, 12, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.fillStyle = "#7be8ff";
+  ctx.fillRect(-18, -32, 12, 10);
+  ctx.fillRect(6, -32, 12, 10);
+
+  ctx.fillStyle = "#203447";
+  ctx.fillRect(-20, -52, 40, 22);
+  ctx.restore();
 }
 
 function drawParticles() {
   state.particles.forEach((particle) => {
     ctx.save();
-    ctx.globalAlpha = clamp(particle.life * 1.8, 0, 1);
+    ctx.globalAlpha = clamp(particle.life * 2.4, 0, 1);
     ctx.fillStyle = particle.color;
     ctx.beginPath();
     ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
@@ -652,7 +878,7 @@ function drawFlash(width, height) {
   if (state.flashTimer <= 0) {
     return;
   }
-  ctx.fillStyle = state.scene === "clear" ? "rgba(171, 255, 179, 0.16)" : "rgba(255, 108, 140, 0.16)";
+  ctx.fillStyle = state.scene === "clear" ? "rgba(125, 240, 161, 0.14)" : "rgba(255, 125, 152, 0.16)";
   ctx.fillRect(0, 0, width, height);
 }
 
@@ -660,12 +886,15 @@ function drawScene() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   ctx.clearRect(0, 0, width, height);
-  drawBackground(width, height);
-  drawLanes(width, height);
-  drawRouteBar(width);
-  state.obstacles.forEach(drawCrowd);
+
+  if (!state.stageSpec) {
+    return;
+  }
+
+  drawStationBackground(width, height);
+  [...state.obstacles].sort((left, right) => right.z - left.z).forEach((obstacle) => drawObstacle(obstacle, width, height));
   drawParticles();
-  drawPlayer();
+  drawPlayer(width, height);
   drawFlash(width, height);
 }
 
@@ -677,11 +906,21 @@ function frame(time) {
   requestAnimationFrame(frame);
 }
 
+function handlePrimaryAction() {
+  music.activate();
+  if (state.scene === "title") {
+    startStage(1);
+    return;
+  }
+  if (state.scene === "clear") {
+    startStage(state.stageNumber + 1);
+    return;
+  }
+  startStage(state.stageNumber);
+}
+
 function registerInputs() {
-  ui.primaryButton.addEventListener("click", () => {
-    music.activate();
-    startGame();
-  });
+  ui.primaryButton.addEventListener("click", handlePrimaryAction);
 
   ui.audioToggle.addEventListener("click", () => {
     const nextEnabled = !music.enabled;
@@ -692,39 +931,49 @@ function registerInputs() {
     updateAudioButton();
   });
 
-  ui.leftButton.addEventListener("click", () => movePlayer(-1));
-  ui.rightButton.addEventListener("click", () => movePlayer(1));
-
   document.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
     if (key === "arrowleft" || key === "a") {
-      movePlayer(-1);
+      setPlayerLane(state.player.lane - 1);
     }
     if (key === "arrowright" || key === "d") {
-      movePlayer(1);
+      setPlayerLane(state.player.lane + 1);
+    }
+    if (key >= "1" && key <= "5") {
+      setPlayerLane(Number.parseInt(key, 10) - 1);
     }
     if ((key === "enter" || key === " ") && !state.running) {
-      music.activate();
-      startGame();
+      handlePrimaryAction();
     }
   });
 
   canvas.addEventListener("pointerdown", (event) => {
-    state.pointerStartX = event.clientX;
+    if (!state.running) {
+      return;
+    }
+    music.activate();
+    state.pointerId = event.pointerId;
+    setPlayerLane(laneFromClientX(event.clientX));
+    canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!state.running || state.pointerId !== event.pointerId) {
+      return;
+    }
+    setPlayerLane(laneFromClientX(event.clientX));
   });
 
   canvas.addEventListener("pointerup", (event) => {
-    if (state.pointerStartX == null) {
-      return;
+    if (state.pointerId === event.pointerId) {
+      state.pointerId = null;
     }
-    const deltaX = event.clientX - state.pointerStartX;
-    if (Math.abs(deltaX) > 22) {
-      movePlayer(deltaX > 0 ? 1 : -1);
-    } else if (state.running) {
-      const midpoint = canvas.getBoundingClientRect().left + canvas.clientWidth / 2;
-      movePlayer(event.clientX > midpoint ? 1 : -1);
+  });
+
+  canvas.addEventListener("pointercancel", (event) => {
+    if (state.pointerId === event.pointerId) {
+      state.pointerId = null;
     }
-    state.pointerStartX = null;
   });
 
   window.addEventListener("resize", resizeCanvas);
@@ -735,14 +984,15 @@ function registerServiceWorker() {
     return;
   }
   navigator.serviceWorker.register("./sw.js").catch(() => {
-    // Ignore service worker registration errors in preview environments.
+    // Preview environments may block the registration.
   });
 }
 
 function init() {
-  document.body.dataset.boot = "ready";
+  state.stageSpec = buildStage(state.stageNumber);
   updateAudioButton();
   updateHud();
+  updateRoutePanel();
   resizeCanvas();
   registerInputs();
   registerServiceWorker();

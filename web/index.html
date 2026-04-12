@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Rush Hour Slip | 満員電車すり抜け</title>
-  <meta name="description" content="満員電車の人波を左右にすり抜けてホームを目指す、Play ストア前提の日本語カジュアルゲーム試作。">
+  <title>Rush Hour Slip | 駅構内ダッシュ</title>
+  <meta name="description" content="駅構内を三人称視点で駆け抜け、停車中の列車へ飛び込むステージ制ランゲーム。">
   <meta name="theme-color" content="#08111b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="format-detection" content="telephone=no">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ja_JP">
-  <meta property="og:title" content="Rush Hour Slip | 満員電車すり抜け">
-  <meta property="og:description" content="縦持ちで遊ぶ、満員電車すり抜けゲーム試作。">
+  <meta property="og:title" content="Rush Hour Slip | 駅構内ダッシュ">
+  <meta property="og:description" content="駅構内を三人称視点で走り、障害物を避けて列車へ向かうスマホ向けゲーム。">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -27,19 +27,19 @@
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">RS</span>
           <div>
-            <p class="eyebrow">Tokyo Platform Escape</p>
+            <p class="eyebrow">Station Rush Runner</p>
             <h1>Rush Hour Slip</h1>
           </div>
         </div>
 
         <div class="header-side">
           <div class="mini-stat">
-            <span class="mini-label">言語</span>
-            <strong>日本語</strong>
+            <span class="mini-label">STAGE</span>
+            <strong id="stageValue">1</strong>
           </div>
           <div class="mini-stat">
-            <span class="mini-label">BGM</span>
-            <strong id="trackValue">タイトルBGM</strong>
+            <span class="mini-label">路線</span>
+            <strong id="lineValue">山手線</strong>
           </div>
           <button id="audioToggle" class="ghost-button" type="button" aria-pressed="true">BGM ON</button>
         </div>
@@ -48,99 +48,94 @@
       <section class="panel hud-panel" aria-label="ゲーム情報">
         <div class="hud-card">
           <span class="hud-label">残り距離</span>
-          <strong id="remainingValue">1250m</strong>
+          <strong id="remainingValue">360m</strong>
         </div>
         <div class="hud-card">
-          <span class="hud-label">混雑</span>
-          <strong id="crowdValue">Lv.1</strong>
+          <span class="hud-label">混雑度</span>
+          <strong id="hazardValue">Lv.1</strong>
         </div>
         <div class="hud-card">
-          <span class="hud-label">ベスト</span>
-          <strong id="bestValue">0m</strong>
+          <span class="hud-label">最高到達</span>
+          <strong id="bestValue">STAGE 1</strong>
         </div>
       </section>
 
       <section class="panel stage-panel">
         <div class="stage-top">
-          <p id="sceneLabel" class="scene-pill">タイトル</p>
-          <p id="hintText" class="hint-text">左右ボタンかスワイプで人波を避けます。</p>
+          <p id="sceneLabel" class="scene-pill">始発前</p>
+          <p id="hintText" class="hint-text">画面の行きたい位置をタップすると、そのレーンへすぐ寄せます。</p>
         </div>
 
         <div class="canvas-shell">
-          <canvas id="gameCanvas" width="390" height="780" aria-label="満員電車すり抜けゲーム画面"></canvas>
+          <canvas id="gameCanvas" width="420" height="840" aria-label="Rush Hour Slip のゲーム画面"></canvas>
 
           <div id="overlay" class="overlay">
             <div class="overlay-card">
-              <p id="overlayTag" class="eyebrow">Play Store Ready Prototype</p>
-              <h2 id="overlayTitle">ホームまで、人波を抜けろ。</h2>
+              <p id="overlayTag" class="eyebrow">Stage Runner Prototype</p>
+              <h2 id="overlayTitle">列車のドアまで駅構内を駆け抜けろ</h2>
               <p id="overlayText" class="overlay-text">
-                左右にすり抜けて、停車前にホーム位置までたどり着く短時間ゲームです。
-                日本語UI、オフライン前提、外部APIなしで構成しています。
+                プレイヤーが前へ走り続け、障害物のないレーンへ自分で飛び込みます。停車中の列車に乗れたらクリア、
+                次のステージでは通路密度と障害物のいやらしさが一段上がります。
               </p>
 
               <dl id="overlayFacts" class="overlay-facts">
                 <div>
-                  <dt>配布前提</dt>
-                  <dd>Play ストア / 縦持ち</dd>
+                  <dt>視点</dt>
+                  <dd>三人称ラン</dd>
                 </div>
                 <div>
                   <dt>操作</dt>
-                  <dd>左右ボタン / スワイプ</dd>
+                  <dd>画面タップ / 指スライド</dd>
                 </div>
                 <div>
-                  <dt>BGM</dt>
-                  <dd>タイトル / 走行 / 結果</dd>
+                  <dt>目標</dt>
+                  <dd>列車へ乗車して次ステージへ</dd>
                 </div>
               </dl>
 
-              <button id="primaryButton" class="primary-button" type="button">プレイ開始</button>
+              <button id="primaryButton" class="primary-button" type="button">出発する</button>
             </div>
           </div>
-        </div>
-
-        <div class="controls" aria-label="移動ボタン">
-          <button id="leftButton" class="control-button" type="button">
-            <span>LEFT</span>
-            <strong>←</strong>
-          </button>
-          <button id="rightButton" class="control-button" type="button">
-            <span>RIGHT</span>
-            <strong>→</strong>
-          </button>
         </div>
       </section>
     </section>
 
     <aside class="side-column" aria-label="ゲーム補足情報">
       <section class="panel info-card">
-        <p class="eyebrow">Core Loop</p>
-        <h2>短くて気持ちいい、通勤ラッシュ回避。</h2>
-        <p>
-          1プレイは約30秒から50秒。5レーンを左右に移動しながら人波を抜けて、
-          残り距離をゼロまで削ればクリアです。
+        <p class="eyebrow">Route Brief</p>
+        <h2 id="routeTitle">中央改札から3番線ホームへ</h2>
+        <p id="routeText">
+          柱、ベンチ、待機列の隙間を抜けて停車中の列車を目指します。ステージが上がるほど、
+          通路が詰まり、レーン変更の読みが問われます。
         </p>
       </section>
 
       <section class="panel info-card">
-        <p class="eyebrow">Play Store Baseline</p>
-        <ul class="info-list">
-          <li>日本語UI / `lang=ja` / 縦持ち前提</li>
-          <li>外部API、有料SDK、広告SDKなし</li>
-          <li>オフラインでもコアループが成立</li>
-          <li>PWA 寄り構成で後から Android ラップしやすい</li>
-        </ul>
+        <p class="eyebrow">Station Feed</p>
+        <dl class="info-grid">
+          <div>
+            <dt>駅名</dt>
+            <dd id="stationValue">東京</dd>
+          </div>
+          <div>
+            <dt>番線</dt>
+            <dd id="platformValue">3番線</dd>
+          </div>
+          <div>
+            <dt>行き先</dt>
+            <dd id="destinationValue">上野・池袋方面</dd>
+          </div>
+        </dl>
       </section>
 
       <section class="panel info-card">
-        <p class="eyebrow">BGM Scenes</p>
+        <p class="eyebrow">Controls</p>
         <ul class="info-list">
-          <li>タイトル: 落ち着いた夜明け前の駅ホーム</li>
-          <li>走行中: テンポを上げたラッシュアワー</li>
-          <li>結果: クリアと失敗で別の短いフレーズ</li>
+          <li>画面をタップ: そのレーンへ即座に移動</li>
+          <li>指を横へ滑らせる: 連続でレーン変更</li>
+          <li>列車前まで走り切る: ステージクリア</li>
+          <li>接触すると同じステージをやり直し</li>
         </ul>
-        <p class="small-note">
-          音はすべて Web Audio でアプリ内生成します。外部音源ファイルは使っていません。
-        </p>
       </section>
     </aside>
   </main>

@@ -1,8 +1,8 @@
 {
-  "name": "Rush Hour Slip - 満員電車すり抜け",
-  "short_name": "ラッシュ回避",
+  "name": "Rush Hour Slip - Station Dash",
+  "short_name": "Rush Hour Slip",
   "id": "/rush-hour-slip/",
-  "description": "満員電車の人波を左右にすり抜けてホームを目指す、日本語UIのカジュアルゲーム試作。",
+  "description": "A stage-based station runner where you sprint to a waiting train.",
   "lang": "ja",
   "dir": "ltr",
   "start_url": "./index.html",

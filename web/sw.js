@@ -1,4 +1,4 @@
-const CACHE_NAME = "rush-hour-slip-v1";
+const CACHE_NAME = "rush-hour-slip-v2-stage-run";
 const ASSETS = [
   "./",
   "./index.html",

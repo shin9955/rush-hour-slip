@@ -6,12 +6,15 @@ const STORAGE_KEYS = {
 const CONFIG = {
   laneCount: 5,
   renderDistance: 160,
-  collisionDepth: 8,
+  collisionDistance: 18,
+  collisionFootRadius: 12,
   baseStageLength: 360,
   stageLengthStep: 72,
   baseSpeed: 34,
   speedStep: 4,
-  columnSpacing: 36
+  columnSpacing: 36,
+  playerGroundYRatio: 0.86,
+  playerFootOffset: 22
 };
 
 const STATION_THEMES = [
@@ -307,23 +310,11 @@ function currentTheme(stageNumber) {
 }
 
 function pickObstacleType(stageNumber, rowIndex, lane) {
-  const pool = ["crowd", "sign", "luggage"];
-  if (stageNumber >= 2) {
-    pool.push("bench");
-  }
-  if (stageNumber >= 3) {
-    pool.push("cart");
-  }
-  if ((rowIndex + lane) % 4 === 0) {
-    pool.push("crowd");
-  }
-  return OBSTACLE_TYPES[pool[Math.floor(Math.random() * pool.length)]];
+  return OBSTACLE_TYPES.crowd;
 }
 
 function chooseLaneShift(stageNumber) {
-  const bag = stageNumber >= 5
-    ? [0, 0, 1, -1, 1, -1, 2, -2]
-    : [0, 0, 0, 1, -1, 1, -1];
+  const bag = [0, 1, -1, 1, -1, 1, -1];
   return bag[Math.floor(Math.random() * bag.length)];
 }
 
@@ -332,34 +323,116 @@ function buildStage(stageNumber) {
   const length = CONFIG.baseStageLength + (stageNumber - 1) * CONFIG.stageLengthStep;
   const speed = CONFIG.baseSpeed + (stageNumber - 1) * CONFIG.speedStep;
   const hazard = clamp(1 + Math.floor((stageNumber - 1) * 0.75), 1, 9);
-  const spacingBase = Math.max(16, 30 - stageNumber * 1.2);
-  const extraSafeChance = Math.max(0.42 - stageNumber * 0.045, 0.08);
+  const spacingBase = Math.max(18, 31 - stageNumber);
+  const extraSafeChance = Math.max(0.18 - stageNumber * 0.025, 0.04);
   const obstacles = [];
+  const branches = [];
+  const branchCount = clamp(1 + Math.floor((stageNumber - 1) / 2), 1, 3);
+  const branchGap = (length - 170) / (branchCount + 1);
   let safeLane = 2;
   let z = 56;
   let rowIndex = 0;
 
+  for (let branchIndex = 0; branchIndex < branchCount; branchIndex += 1) {
+    const direction = (stageNumber + branchIndex) % 2 === 0 ? -1 : 1;
+    const targetLanes = direction < 0 ? [0, 1] : [3, 4];
+    branches.push({
+      z: Math.round(90 + branchGap * (branchIndex + 1)),
+      signZ: Math.round(64 + branchGap * (branchIndex + 1)),
+      direction,
+      label: direction < 0 ? "LEFT ROUTE" : "RIGHT ROUTE",
+      targetLanes,
+      prepLanes: direction < 0 ? [0, 1, 2] : [2, 3, 4]
+    });
+  }
+
   while (z < length - 50) {
-    safeLane = clamp(safeLane + chooseLaneShift(stageNumber), 0, CONFIG.laneCount - 1);
-    const freeLanes = new Set([safeLane]);
-    if (Math.random() < extraSafeChance) {
-      freeLanes.add(clamp(safeLane + (Math.random() < 0.5 ? -1 : 1), 0, CONFIG.laneCount - 1));
+    const rowAdvance = spacingBase + Math.random() * 9 + (rowIndex % 4 === 0 ? 5 : 0);
+    if (branches.some((branch) => z > branch.z - 28 && z < branch.z + 48)) {
+      z += rowAdvance;
+      rowIndex += 1;
+      continue;
     }
 
-    for (let lane = 0; lane < CONFIG.laneCount; lane += 1) {
-      if (freeLanes.has(lane)) {
-        continue;
+    const forcedBranch = branches.find((branch) => z >= branch.z + 48 && z < branch.z + 96);
+    if (forcedBranch) {
+      safeLane = forcedBranch.direction < 0 ? 1 : 3;
+    } else {
+      safeLane = clamp(safeLane + chooseLaneShift(stageNumber), 0, CONFIG.laneCount - 1);
+    }
+    const freeLanes = new Set([safeLane]);
+    const sideOptions = [];
+    if (safeLane > 0) {
+      sideOptions.push(-1);
+    }
+    if (safeLane < CONFIG.laneCount - 1) {
+      sideOptions.push(1);
+    }
+
+    if (sideOptions.length > 0) {
+      const primarySide = sideOptions[Math.floor(Math.random() * sideOptions.length)];
+      freeLanes.add(safeLane + primarySide);
+      if (Math.random() < extraSafeChance && sideOptions.length > 1) {
+        freeLanes.add(safeLane - primarySide);
       }
+    }
+
+    const blockedCandidates = [];
+    for (let lane = 0; lane < CONFIG.laneCount; lane += 1) {
+      if (!freeLanes.has(lane)) {
+        blockedCandidates.push(lane);
+      }
+    }
+
+    const occupiedCount = clamp(
+      1 + Math.floor(Math.random() * 2) + (Math.random() < 0.35 ? 1 : 0),
+      1,
+      blockedCandidates.length
+    );
+    const shuffledBlocked = [...blockedCandidates].sort(() => Math.random() - 0.5);
+
+    for (let index = 0; index < occupiedCount; index += 1) {
+      const lane = shuffledBlocked[index];
+      const laneSpread = clamp((lane - safeLane) * 1.4, -3.2, 3.2);
+      const stagger = ((rowIndex + lane) % 2 === 0 ? 0.9 : -0.9) + (Math.random() - 0.5) * 1.2;
       obstacles.push({
         lane,
-        z,
+        z: z + laneSpread + stagger,
         type: pickObstacleType(stageNumber, rowIndex, lane)
       });
     }
 
-    z += spacingBase + Math.random() * 10 + (rowIndex % 3 === 0 ? 6 : 0);
+    z += rowAdvance;
     rowIndex += 1;
   }
+
+  branches.forEach((branch) => {
+    const branchRows = [
+      { z: branch.z - 16, freeLanes: new Set(branch.prepLanes) },
+      { z: branch.z - 4, freeLanes: new Set([2, ...branch.targetLanes]) },
+      { z: branch.z + 10, freeLanes: new Set(branch.targetLanes) },
+      { z: branch.z + 22, freeLanes: new Set(branch.targetLanes) },
+      { z: branch.z + 34, freeLanes: new Set(branch.targetLanes) },
+      { z: branch.z + 46, freeLanes: new Set(branch.targetLanes) }
+    ];
+
+    branchRows.forEach((row, branchRowIndex) => {
+      for (let lane = 0; lane < CONFIG.laneCount; lane += 1) {
+        if (row.freeLanes.has(lane)) {
+          continue;
+        }
+        const laneSpread = clamp((lane - 2) * 1.15, -2.6, 2.6);
+        const stagger = (branchRowIndex % 2 === 0 ? -0.8 : 0.8) + (lane % 2 === 0 ? 0.35 : -0.35);
+        obstacles.push({
+          lane,
+          z: row.z + laneSpread + stagger,
+          type: pickObstacleType(stageNumber, branchRowIndex, lane)
+        });
+      }
+    });
+  });
+
+  obstacles.sort((left, right) => left.z - right.z);
 
   return {
     stageNumber,
@@ -367,8 +440,35 @@ function buildStage(stageNumber) {
     length,
     speed,
     hazard,
-    obstacles
+    obstacles,
+    branches
   };
+}
+
+function getNextBranch(spec = state.stageSpec, distance = state.distance) {
+  if (!spec || !spec.branches) {
+    return null;
+  }
+  return spec.branches.find((branch) => branch.z + 24 >= distance) || null;
+}
+
+function getSweatState(spec = state.stageSpec) {
+  if (!spec) {
+    return { label: "LOW", count: 1, color: "rgba(121, 221, 255, 0.8)" };
+  }
+
+  const nextBranch = getNextBranch(spec);
+  const strain = spec.hazard * 0.7 + Math.min(2.1, state.stageElapsed / 18) + (nextBranch ? 0.8 : 0.2);
+  if (!state.running || strain < 2.2) {
+    return { label: "LOW", count: 1, color: "rgba(121, 221, 255, 0.8)" };
+  }
+  if (strain < 3.4) {
+    return { label: "MID", count: 2, color: "rgba(121, 221, 255, 0.86)" };
+  }
+  if (strain < 4.6) {
+    return { label: "HIGH", count: 3, color: "rgba(143, 233, 255, 0.92)" };
+  }
+  return { label: "MAX", count: 4, color: "rgba(196, 244, 255, 0.96)" };
 }
 
 function updateAudioButton() {
@@ -379,17 +479,28 @@ function updateAudioButton() {
 function updateHud() {
   const spec = state.stageSpec || buildStage(state.stageNumber);
   const remaining = Math.max(0, Math.ceil(spec.length - state.distance));
+  const nextBranch = getNextBranch(spec);
   ui.stageValue.textContent = String(state.stageNumber);
   ui.lineValue.textContent = spec.theme.line;
   ui.remainingValue.textContent = `${remaining}m`;
   ui.hazardValue.textContent = `Lv.${spec.hazard}`;
   ui.bestValue.textContent = `STAGE ${state.bestStage}`;
+  if (state.scene === "play") {
+    ui.hintText.textContent = nextBranch
+      ? (nextBranch.z - state.distance > 20
+        ? `NEXT SPLIT ${Math.max(0, Math.round(nextBranch.z - state.distance))}m: ${nextBranch.label}`
+        : `COMMIT NOW: ${nextBranch.label}`)
+      : "FINAL STRAIGHT. HOLD THE OPEN LANE.";
+  }
 }
 
 function updateRoutePanel() {
   const spec = state.stageSpec || buildStage(state.stageNumber);
+  const nextBranch = getNextBranch(spec);
   ui.routeTitle.textContent = spec.theme.routeTitle;
-  ui.routeText.textContent = spec.theme.routeText;
+  ui.routeText.textContent = nextBranch
+    ? `Follow the overhead sign. ${nextBranch.label} in ${Math.max(0, Math.round(nextBranch.z - state.distance))}m.`
+    : spec.theme.routeText;
   ui.stationValue.textContent = spec.theme.station;
   ui.platformValue.textContent = spec.theme.platform;
   ui.destinationValue.textContent = spec.theme.destination;
@@ -558,6 +669,21 @@ function resizeCanvas() {
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 }
 
+function isObstacleInHitZone(relativeZ) {
+  if (relativeZ <= 0 || relativeZ >= CONFIG.collisionDistance) {
+    return false;
+  }
+
+  const viewWidth = canvas.clientWidth;
+  const viewHeight = canvas.clientHeight;
+  const projection = projectDepth(relativeZ, viewWidth, viewHeight);
+  const obstacleFeetY = projection.y;
+  const playerFeetY = viewHeight * CONFIG.playerGroundYRatio + CONFIG.playerFootOffset;
+
+  // Center collision on the obstacle's feet and compare that point against the player's feet line.
+  return Math.abs(obstacleFeetY - playerFeetY) <= CONFIG.collisionFootRadius;
+}
+
 function updateGame(delta) {
   state.player.lean += (0 - state.player.lean) * Math.min(1, delta * 14);
 
@@ -573,7 +699,7 @@ function updateGame(delta) {
 
   for (const obstacle of state.obstacles) {
     const relativeZ = obstacle.z - state.distance;
-    if (relativeZ < -6 || relativeZ > CONFIG.collisionDepth) {
+    if (!isObstacleInHitZone(relativeZ)) {
       continue;
     }
     if (obstacle.lane === state.player.lane) {
@@ -588,6 +714,7 @@ function updateGame(delta) {
 
   updateParticles(delta);
   updateHud();
+  updateRoutePanel();
 }
 
 function drawQuad(x1, y1, x2, y2, x3, y3, x4, y4) {
@@ -651,6 +778,8 @@ function drawStationBackground(width, height) {
     ctx.stroke();
   }
 
+  drawForkPaths(width, height);
+
   for (let z = CONFIG.columnSpacing; z < CONFIG.renderDistance; z += CONFIG.columnSpacing) {
     const offset = z - (state.distance % CONFIG.columnSpacing);
     if (offset <= 0 || offset > CONFIG.renderDistance) {
@@ -661,6 +790,55 @@ function drawStationBackground(width, height) {
 
   drawOverheadSigns(width, height);
   drawArrivalTrain(width, height);
+}
+
+function drawForkPaths(width, height) {
+  (state.stageSpec.branches || []).forEach((branch) => {
+    const startZ = branch.z - state.distance - 30;
+    const endZ = branch.z - state.distance + 26;
+    if (endZ <= 12 || startZ >= CONFIG.renderDistance) {
+      return;
+    }
+
+    const start = projectDepth(clamp(startZ, 8, CONFIG.renderDistance), width, height);
+    const end = projectDepth(clamp(endZ, 8, CONFIG.renderDistance), width, height);
+    const spread = lerp(width * 0.012, width * 0.12, end.depth);
+    const center = width * 0.5;
+
+    ctx.fillStyle = "rgba(27, 46, 63, 0.94)";
+    drawQuad(
+      center - start.width * 0.48, start.y,
+      center - start.width * 0.08, start.y,
+      center - end.width * 0.14 - spread, end.y,
+      center - end.width * 0.5 - spread, end.y
+    );
+    ctx.fill();
+    drawQuad(
+      center + start.width * 0.08, start.y,
+      center + start.width * 0.48, start.y,
+      center + end.width * 0.5 + spread, end.y,
+      center + end.width * 0.14 + spread, end.y
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(6, 12, 18, 0.92)";
+    drawQuad(
+      center - start.width * 0.06, start.y,
+      center + start.width * 0.06, start.y,
+      center + end.width * 0.06, end.y,
+      center - end.width * 0.06, end.y
+    );
+    ctx.fill();
+
+    ctx.strokeStyle = branch.direction < 0 ? "rgba(121, 221, 255, 0.55)" : "rgba(255, 214, 111, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(center - start.width * 0.08, start.y);
+    ctx.lineTo(center - end.width * 0.14 - spread, end.y);
+    ctx.moveTo(center + start.width * 0.08, start.y);
+    ctx.lineTo(center + end.width * 0.14 + spread, end.y);
+    ctx.stroke();
+  });
 }
 
 function drawColumns(relativeZ, width, height) {
@@ -706,6 +884,35 @@ function drawOverheadSigns(width, height) {
     ctx.fillStyle = "#7df0a1";
     ctx.font = `${Math.round(lerp(6, 14, projection.depth))}px "Yu Gothic UI", sans-serif`;
     ctx.fillText(state.stageSpec.theme.line, x + boardWidth * 0.5, y + boardHeight * 0.8);
+    ctx.textAlign = "left";
+  });
+
+  (state.stageSpec.branches || []).forEach((branch) => {
+    const relativeZ = branch.signZ - state.distance;
+    if (relativeZ <= 12 || relativeZ >= CONFIG.renderDistance) {
+      return;
+    }
+
+    const projection = projectDepth(relativeZ, width, height);
+    const boardWidth = lerp(54, 210, projection.depth);
+    const boardHeight = lerp(16, 58, projection.depth);
+    const x = width * 0.5 - boardWidth * 0.5;
+    const y = projection.y - lerp(84, 250, projection.depth);
+    const accent = branch.direction < 0 ? "#79ddff" : "#ffd66f";
+
+    ctx.fillStyle = "rgba(12, 28, 40, 0.96)";
+    ctx.fillRect(x, y, boardWidth, boardHeight);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, boardWidth, boardHeight);
+
+    ctx.fillStyle = "#dff9ff";
+    ctx.font = `${Math.round(lerp(7, 15, projection.depth))}px "Yu Gothic UI", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("NEXT SPLIT", x + boardWidth * 0.5, y + boardHeight * 0.34);
+    ctx.fillStyle = accent;
+    ctx.font = `${Math.round(lerp(9, 22, projection.depth))}px "Bahnschrift SemiCondensed", sans-serif`;
+    ctx.fillText(branch.direction < 0 ? "<< LEFT" : "RIGHT >>", x + boardWidth * 0.5, y + boardHeight * 0.76);
     ctx.textAlign = "left";
   });
 }
@@ -764,6 +971,7 @@ function drawObstacle(obstacle, width, height) {
 
   if (obstacle.type.id === "crowd") {
     const bodyWidth = size * 0.26;
+    const legColors = ["#f75c5c", "#2ec4b6", "#ffd166"];
     for (let index = -1; index <= 1; index += 1) {
       const px = x + index * bodyWidth * 0.95;
       ctx.fillStyle = index === 0 ? "#85d7ff" : "#ff9c7e";
@@ -772,7 +980,7 @@ function drawObstacle(obstacle, width, height) {
       ctx.fill();
       ctx.fillStyle = "rgba(225, 240, 255, 0.92)";
       ctx.fillRect(px - bodyWidth * 0.28, baseY - size * 0.82, bodyWidth * 0.56, size * 0.44);
-      ctx.fillStyle = "#203447";
+      ctx.fillStyle = legColors[index + 1];
       ctx.fillRect(px - bodyWidth * 0.22, baseY - size * 0.38, bodyWidth * 0.44, size * 0.36);
     }
     return;
@@ -822,8 +1030,9 @@ function drawObstacle(obstacle, width, height) {
 
 function drawPlayer(width, height) {
   const x = laneCenterAtWidth(state.player.lane, width * 0.9, width);
-  const y = height * 0.86;
+  const y = height * CONFIG.playerGroundYRatio;
   const stride = state.running ? Math.sin(state.stageElapsed * 11) : 0;
+  const sweat = getSweatState(state.stageSpec);
 
   ctx.save();
   ctx.translate(x, y);
@@ -834,7 +1043,7 @@ function drawPlayer(width, height) {
   ctx.ellipse(0, 10, 26, 10, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "#0d2234";
+  ctx.strokeStyle = "#ffd166";
   ctx.lineWidth = 8;
   ctx.lineCap = "round";
   ctx.beginPath();
@@ -853,13 +1062,63 @@ function drawPlayer(width, height) {
   ctx.arc(0, -68, 12, 0, Math.PI * 2);
   ctx.fill();
 
+  if (state.running) {
+    ctx.fillStyle = sweat.color;
+    for (let index = 0; index < sweat.count; index += 1) {
+      const side = index % 2 === 0 ? 1 : -1;
+      const phase = state.stageElapsed * 6.5 + index * 1.8;
+      const dropX = side * (15 + Math.sin(phase) * 2.5);
+      const dropY = -82 + index * 7 + Math.cos(phase * 1.4) * 1.8;
+      const dropSize = 3.2 + index * 0.65;
+      ctx.beginPath();
+      ctx.moveTo(dropX, dropY - dropSize);
+      ctx.quadraticCurveTo(dropX + dropSize * 0.8, dropY - dropSize * 0.1, dropX, dropY + dropSize);
+      ctx.quadraticCurveTo(dropX - dropSize * 0.8, dropY - dropSize * 0.1, dropX, dropY - dropSize);
+      ctx.fill();
+    }
+  }
+
   ctx.fillStyle = "#7be8ff";
   ctx.fillRect(-18, -32, 12, 10);
   ctx.fillRect(6, -32, 12, 10);
 
-  ctx.fillStyle = "#203447";
+  ctx.fillStyle = "#2ec4b6";
   ctx.fillRect(-20, -52, 40, 22);
   ctx.restore();
+}
+
+function drawRaceHud(width, height) {
+  if (state.scene !== "play" || !state.stageSpec) {
+    return;
+  }
+
+  const sweat = getSweatState(state.stageSpec);
+  const nextBranch = getNextBranch(state.stageSpec);
+  const chips = [
+    { label: "SWEAT", value: sweat.label, accent: "#79ddff", width: 110 },
+    {
+      label: "NEXT",
+      value: nextBranch ? nextBranch.label : "STRAIGHT",
+      accent: nextBranch ? (nextBranch.direction < 0 ? "#79ddff" : "#ffd66f") : "#7df0a1",
+      width: 148
+    }
+  ];
+
+  chips.forEach((chip, index) => {
+    const x = 16 + index * 132;
+    const y = 18;
+    ctx.fillStyle = "rgba(10, 22, 34, 0.82)";
+    ctx.fillRect(x, y, chip.width, 40);
+    ctx.strokeStyle = chip.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, chip.width, 40);
+    ctx.fillStyle = "rgba(220, 244, 255, 0.72)";
+    ctx.font = '10px "Bahnschrift", sans-serif';
+    ctx.fillText(chip.label, x + 10, y + 13);
+    ctx.fillStyle = chip.accent;
+    ctx.font = '16px "Bahnschrift SemiCondensed", sans-serif';
+    ctx.fillText(chip.value, x + 10, y + 30);
+  });
 }
 
 function drawParticles() {
@@ -895,6 +1154,7 @@ function drawScene() {
   [...state.obstacles].sort((left, right) => right.z - left.z).forEach((obstacle) => drawObstacle(obstacle, width, height));
   drawParticles();
   drawPlayer(width, height);
+  drawRaceHud(width, height);
   drawFlash(width, height);
 }
 

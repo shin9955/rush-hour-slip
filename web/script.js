@@ -15,8 +15,14 @@ const CONFIG = {
   columnSpacing: 36,
   playerGroundYRatio: 0.86,
   playerFootOffset: 22,
+  introSafeDistance: 110,
+  finalObstacleBuffer: 18,
+  hazardStageSpan: 2,
+  maxHazardLevel: 5,
   goalApproachDistance: 82,
-  goalSequenceDuration: 0.72
+  goalSequenceDuration: 0.72,
+  approachCueDistance: 120,
+  finalCallCueDistance: 42
 };
 
 const UI_TEXT = {
@@ -31,15 +37,16 @@ const UI_TEXT = {
   hudSweat: "\u767a\u6c57",
   hudNext: "\u9032\u8def",
   hudStraight: "\u76f4\u9032",
+  hudTrain: "\u5217\u8eca",
+  hudTarget: "\u4e57\u8eca\u53e3",
   sweatLow: "\u5f31",
   sweatMid: "\u4e2d",
   sweatHigh: "\u5f37",
   sweatMax: "\u9650\u754c",
   clear: "\u30af\u30ea\u30a2",
   retry: "\u3084\u308a\u76f4\u3057",
-  goalDoorLeft: "\u5de6\u30c9\u30a2",
-  goalDoorCenter: "\u4e2d\u592e\u30c9\u30a2",
-  goalDoorRight: "\u53f3\u30c9\u30a2"
+  goalDoorLabel: "\u505c\u8eca\u4f4d\u7f6e",
+  rareTrain: "\u30ec\u30a2\u8eca"
 };
 
 function branchLabel(direction) {
@@ -64,52 +71,135 @@ function formatRouteHint(distance, label) {
   return `${UI_TEXT.routeLeadIn}\u3001${distance}m\u5148\u3067${label}\u306b\u5bc4\u308b\u3002`;
 }
 
-function goalDoorLabel(lane) {
-  if (lane <= 1) {
-    return UI_TEXT.goalDoorLeft;
-  }
-  if (lane >= 3) {
-    return UI_TEXT.goalDoorRight;
-  }
-  return UI_TEXT.goalDoorCenter;
+function formatBoardingPosition(position) {
+  return `${position.door}\u756a\u30c9\u30a2`;
 }
 
-function formatGoalDoorHint(lane) {
-  return `\u30b4\u30fc\u30eb\u306f${goalDoorLabel(lane)}\u3002\u30c9\u30a2\u306b\u5408\u308f\u305b\u308d\u3002`;
+function formatCompactBoardingPosition(position) {
+  return `${position.door}\u756a\u30c9\u30a2`;
 }
 
 const STATION_THEMES = [
   {
     station: "東京",
-    line: "山手線",
-    destination: "上野・池袋方面",
+    stationRoman: "TOKYO",
+    line: "中央線快速",
+    lineCode: "JC",
     platform: "3番線",
     routeTitle: "中央改札から3番線ホームへ",
-    routeText: "柱と待機列の隙間を抜け、ホーム先頭寄りで停車中の列車へ飛び込む。"
+    routeText: "柱と待機列の隙間を抜け、停車位置目標を見ながらホーム中央へ滑り込む。",
+    transfers: ["山手線", "京浜東北線", "東海道線"],
+    services: ["各駅停車", "快速", "通勤快速", "中央特快"],
+    destinations: ["上野行き", "新宿行き", "高尾行き", "豊田行き"],
+    timetable: { hour: 8, minuteBase: 6 },
+    carCount: 12,
+    carBase: 6,
+    palette: {
+      stripe: "#f98c1f",
+      stripeSecondary: "#ffd26d",
+      front: "#223446",
+      led: "#89ffb6",
+      window: "#183447",
+      door: "#5a6c78",
+      light: "#ffe7a6"
+    }
   },
   {
     station: "品川",
+    stationRoman: "SHINAGAWA",
     line: "京浜東北線",
-    destination: "大宮方面",
+    lineCode: "JK",
     platform: "5番線",
     routeTitle: "乗換通路を横切って5番線へ",
-    routeText: "ベンチと案内板の間を抜ける。視界の奥に見える銀色の編成がゴール。"
+    routeText: "ベンチと案内板の間を抜ける。銀帯の編成と停車位置札が目印になる。",
+    transfers: ["東海道線", "横須賀線", "京急線"],
+    services: ["各駅停車", "快速", "急行"],
+    destinations: ["上野行き", "大宮行き", "蒲田行き", "大船行き"],
+    timetable: { hour: 8, minuteBase: 12 },
+    carCount: 10,
+    carBase: 5,
+    palette: {
+      stripe: "#28a0ff",
+      stripeSecondary: "#71cfff",
+      front: "#1c3950",
+      led: "#94ffd1",
+      window: "#163245",
+      door: "#5c7382",
+      light: "#dff6ff"
+    }
   },
   {
     station: "新宿",
-    line: "中央線快速",
-    destination: "東京方面",
+    stationRoman: "SHINJUKU",
+    line: "埼京線",
+    lineCode: "JA",
     platform: "11番線",
     routeTitle: "連絡通路の密集帯を突破する",
-    routeText: "人の列が急に絞られる。早めに空きレーンを読んでホーム中央へ寄せる。"
+    routeText: "人の列が急に絞られる。早めに停車位置サインを拾い、狙いのドア位置へ寄せ切る。",
+    transfers: ["山手線", "中央線", "湘南新宿ライン"],
+    services: ["各駅停車", "快速", "通勤快速", "急行"],
+    destinations: ["新宿行き", "大宮行き", "川越行き", "新木場行き"],
+    timetable: { hour: 8, minuteBase: 19 },
+    carCount: 10,
+    carBase: 4,
+    palette: {
+      stripe: "#49bc5f",
+      stripeSecondary: "#8de49a",
+      front: "#203548",
+      led: "#a3ffcf",
+      window: "#1b3244",
+      door: "#58707f",
+      light: "#f0ffe2"
+    }
   },
   {
     station: "渋谷",
-    line: "埼京線",
-    destination: "大崎方面",
+    stationRoman: "SHIBUYA",
+    line: "東横線",
+    lineCode: "TY",
     platform: "2番線",
     routeTitle: "広いコンコースを縫ってホームへ滑り込む",
-    routeText: "清掃カートと工事サインが増える。止まらず、一直線に停車列車まで走り切る。"
+    routeText: "清掃カートと工事サインが増える。次発表示とドア番号を頼りに一直線で抜ける。",
+    transfers: ["山手線", "銀座線", "副都心線"],
+    services: ["各駅停車", "急行", "通勤特急", "Fライナー"],
+    destinations: ["元町・中華街行き", "和光市行き", "森林公園行き", "新宿三丁目行き"],
+    timetable: { hour: 8, minuteBase: 25 },
+    carCount: 10,
+    carBase: 5,
+    palette: {
+      stripe: "#e25555",
+      stripeSecondary: "#ffc072",
+      front: "#2b3048",
+      led: "#ffdf8c",
+      window: "#1f2e4b",
+      door: "#616a84",
+      light: "#ffe2b9"
+    }
+  }
+];
+
+const TRAIN_VARIANTS = [
+  { face: "flat", stripeOffset: 0.52, stripeWidth: 0.055, doorInset: 0.13, doorGap: 0.085, ledInset: 0.1, windowHeight: 0.22 },
+  { face: "bevel", stripeOffset: 0.57, stripeWidth: 0.06, doorInset: 0.145, doorGap: 0.08, ledInset: 0.12, windowHeight: 0.2 },
+  { face: "rounded", stripeOffset: 0.55, stripeWidth: 0.05, doorInset: 0.12, doorGap: 0.092, ledInset: 0.11, windowHeight: 0.24 }
+];
+
+const RARE_TRAINS = [
+  {
+    id: "wrapping",
+    label: "ラッピング車",
+    ledText: "SPECIAL",
+    note: "全面ラッピングの特別編成",
+    accent: "#ff7ab6",
+    pattern: "wrap"
+  },
+  {
+    id: "test-run",
+    label: "試運転",
+    ledText: "試運転",
+    note: "送り込みの試運転表示",
+    accent: "#ffd66f",
+    pattern: "test"
   }
 ];
 
@@ -186,8 +276,13 @@ const ui = {
   routeTitle: document.querySelector("#routeTitle"),
   routeText: document.querySelector("#routeText"),
   stationValue: document.querySelector("#stationValue"),
+  lineBoardValue: document.querySelector("#lineBoardValue"),
   platformValue: document.querySelector("#platformValue"),
-  destinationValue: document.querySelector("#destinationValue")
+  serviceValue: document.querySelector("#serviceValue"),
+  destinationValue: document.querySelector("#destinationValue"),
+  boardingValue: document.querySelector("#boardingValue"),
+  departureValue: document.querySelector("#departureValue"),
+  formationValue: document.querySelector("#formationValue")
 };
 
 const state = {
@@ -203,6 +298,10 @@ const state = {
   pointerId: null,
   obstacles: [],
   particles: [],
+  audio: {
+    approachPlayed: false,
+    closingPlayed: false
+  },
   goal: {
     lane: 2,
     opening: false,
@@ -324,6 +423,18 @@ class MusicController {
       this.playDoorCue();
       return;
     }
+    if (kind === "approach") {
+      this.playApproachCue();
+      return;
+    }
+    if (kind === "closing") {
+      this.playClosingCue();
+      return;
+    }
+    if (kind === "departure") {
+      this.playDepartureCue();
+      return;
+    }
     const cueMap = {
       move: { wave: "triangle", start: 540, end: 700, duration: 0.05, volume: 0.024 },
       start: { wave: "square", start: 380, end: 520, duration: 0.1, volume: 0.03 },
@@ -349,31 +460,70 @@ class MusicController {
     oscillator.stop(now + cue.duration + 0.03);
   }
 
+  playToneLayer(layer) {
+    if (!this.ctx || !this.enabled || !this.userActivated) {
+      return;
+    }
+    const oscillator = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+    const startAt = this.ctx.currentTime + (layer.delay || 0);
+    const endFrequency = layer.end || layer.start;
+    filter.type = "lowpass";
+    filter.frequency.value = layer.filter || 1800;
+    oscillator.type = layer.wave;
+    oscillator.frequency.setValueAtTime(layer.start, startAt);
+    if (Math.abs(endFrequency - layer.start) > 1) {
+      oscillator.frequency.exponentialRampToValueAtTime(endFrequency, startAt + layer.duration);
+    }
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(layer.volume, startAt + Math.min(0.02, layer.duration * 0.35));
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + layer.duration);
+    oscillator.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + layer.duration + 0.04);
+  }
+
+  playApproachCue() {
+    [
+      { wave: "sine", start: 1320, duration: 0.11, volume: 0.016, delay: 0, filter: 2200 },
+      { wave: "triangle", start: 880, duration: 0.18, volume: 0.012, delay: 0.02, filter: 1600 },
+      { wave: "sine", start: 1568, duration: 0.11, volume: 0.018, delay: 0.18, filter: 2400 },
+      { wave: "triangle", start: 1046.5, duration: 0.18, volume: 0.013, delay: 0.2, filter: 1700 }
+    ].forEach((layer) => this.playToneLayer(layer));
+  }
+
+  playClosingCue() {
+    [
+      { wave: "square", start: 740, end: 700, duration: 0.08, volume: 0.012, delay: 0, filter: 1200 },
+      { wave: "square", start: 659.25, end: 622.25, duration: 0.08, volume: 0.011, delay: 0.11, filter: 1200 },
+      { wave: "square", start: 554.37, end: 523.25, duration: 0.09, volume: 0.011, delay: 0.22, filter: 1200 },
+      { wave: "triangle", start: 392, end: 293.66, duration: 0.28, volume: 0.016, delay: 0.05, filter: 900 }
+    ].forEach((layer) => this.playToneLayer(layer));
+  }
+
+  playDepartureCue() {
+    [
+      { wave: "triangle", start: 523.25, duration: 0.11, volume: 0.015, delay: 0, filter: 1500 },
+      { wave: "triangle", start: 659.25, duration: 0.11, volume: 0.016, delay: 0.13, filter: 1500 },
+      { wave: "triangle", start: 783.99, duration: 0.12, volume: 0.017, delay: 0.26, filter: 1500 },
+      { wave: "sine", start: 1046.5, end: 987.77, duration: 0.24, volume: 0.018, delay: 0.39, filter: 2000 },
+      { wave: "sine", start: 261.63, end: 329.63, duration: 0.44, volume: 0.01, delay: 0.05, filter: 900 }
+    ].forEach((layer) => this.playToneLayer(layer));
+  }
+
   playDoorCue() {
     if (!this.ctx || !this.enabled || !this.userActivated) {
       return;
     }
-    const now = this.ctx.currentTime;
     const layers = [
       { wave: "square", start: 900, end: 690, duration: 0.1, volume: 0.016, delay: 0 },
       { wave: "triangle", start: 280, end: 186, duration: 0.3, volume: 0.022, delay: 0.02 }
     ];
 
-    layers.forEach((layer) => {
-      const oscillator = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const startAt = now + layer.delay;
-      oscillator.type = layer.wave;
-      oscillator.frequency.setValueAtTime(layer.start, startAt);
-      oscillator.frequency.exponentialRampToValueAtTime(layer.end, startAt + layer.duration);
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(layer.volume, startAt + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + layer.duration);
-      oscillator.connect(gain);
-      gain.connect(this.ctx.destination);
-      oscillator.start(startAt);
-      oscillator.stop(startAt + layer.duration + 0.03);
-    });
+    layers.forEach((layer) => this.playToneLayer({ ...layer, filter: 1200 }));
   }
 }
 
@@ -421,8 +571,100 @@ function currentTheme(stageNumber) {
   return STATION_THEMES[(stageNumber - 1) % STATION_THEMES.length];
 }
 
+function stageCycleIndex(stageNumber, length, offset = 0) {
+  return (stageNumber - 1 + offset) % length;
+}
+
+function formatTrainLabel(spec) {
+  return `${spec.service} ${spec.destination}`;
+}
+
+function formatCompactTrainLabel(spec) {
+  const destination = spec.destination.replace("行き", "");
+  const compactDestination = destination.length > 6 ? `${destination.slice(0, 6)}…` : destination;
+  return `${spec.service} ${compactDestination}`;
+}
+
+function buildDepartureTime(theme, stageNumber) {
+  const totalMinutes = theme.timetable.minuteBase + stageNumber * 3;
+  const hour = theme.timetable.hour + Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function pickRareTrain() {
+  const roll = Math.random();
+  if (roll < 0.04) {
+    return RARE_TRAINS[0];
+  }
+  if (roll < 0.07) {
+    return RARE_TRAINS[1];
+  }
+  return null;
+}
+
+function buildBoardingGuide(theme, stageNumber, service) {
+  const serviceShift = service.includes("急") || service.includes("特") ? 1 : (service.includes("各") ? -1 : 0);
+  const focusCar = clamp(
+    theme.carBase + (stageNumber % 3) - 1 + serviceShift,
+    2,
+    Math.max(2, theme.carCount - 1)
+  );
+
+  return [
+    { lane: 0, car: Math.max(1, focusCar - 1), door: 3 },
+    { lane: 1, car: focusCar, door: 1 },
+    { lane: 2, car: focusCar, door: 2 },
+    { lane: 3, car: focusCar, door: 3 },
+    { lane: 4, car: Math.min(theme.carCount, focusCar + 1), door: 1 }
+  ];
+}
+
+function buildTrainAppearance(theme, stageNumber, service, rareTrain) {
+  const variant = TRAIN_VARIANTS[stageCycleIndex(stageNumber, TRAIN_VARIANTS.length)];
+  const fastService = service.includes("急") || service.includes("特") || service.includes("快");
+  return {
+    ...variant,
+    body: "#b8c7d3",
+    roof: "#e0e8ef",
+    lower: "#7e8f9d",
+    stripe: theme.palette.stripe,
+    stripeSecondary: fastService ? theme.palette.stripeSecondary : "#f2f7fb",
+    front: theme.palette.front,
+    ledColor: rareTrain ? rareTrain.accent : theme.palette.led,
+    ledText: rareTrain ? rareTrain.ledText : service,
+    ledSubText: rareTrain ? rareTrain.label : theme.lineCode,
+    window: theme.palette.window,
+    door: theme.palette.door,
+    light: theme.palette.light,
+    pattern: rareTrain ? rareTrain.pattern : null
+  };
+}
+
+function getLaneBoardingPosition(spec, lane) {
+  return spec.boardingGuide[lane] || spec.boardingGuide[spec.goalLane] || { car: 0, door: 0 };
+}
+
+function getGoalBoardingPosition(spec = state.stageSpec) {
+  if (!spec) {
+    return { car: 0, door: 0 };
+  }
+  return getLaneBoardingPosition(spec, spec.goalLane);
+}
+
+function formatGoalDoorHint(spec = state.stageSpec) {
+  return `${UI_TEXT.goalDoorLabel}は${formatBoardingPosition(getGoalBoardingPosition(spec))}。停車位置に合わせろ。`;
+}
+
 function pickObstacleType(stageNumber, rowIndex, lane) {
-  return OBSTACLE_TYPES.crowd;
+  const obstacleBag = [OBSTACLE_TYPES.crowd, OBSTACLE_TYPES.crowd, OBSTACLE_TYPES.bench, OBSTACLE_TYPES.sign];
+  if (stageNumber >= 2) {
+    obstacleBag.push(OBSTACLE_TYPES.cart);
+  }
+  if (stageNumber >= 3) {
+    obstacleBag.push(OBSTACLE_TYPES.luggage);
+  }
+  return obstacleBag[(rowIndex + lane + stageNumber) % obstacleBag.length];
 }
 
 function chooseLaneShift(stageNumber, rowIndex = 0) {
@@ -437,18 +679,28 @@ function chooseLaneShift(stageNumber, rowIndex = 0) {
 
 function buildStage(stageNumber) {
   const theme = currentTheme(stageNumber);
+  const service = theme.services[stageCycleIndex(stageNumber, theme.services.length)];
+  const destination = theme.destinations[stageCycleIndex(stageNumber, theme.destinations.length, 1)];
+  const rareTrain = pickRareTrain();
+  const boardingGuide = buildBoardingGuide(theme, stageNumber, service);
+  const trainAppearance = buildTrainAppearance(theme, stageNumber, service, rareTrain);
+  const departureTime = buildDepartureTime(theme, stageNumber);
   const length = CONFIG.baseStageLength + (stageNumber - 1) * CONFIG.stageLengthStep;
   const speed = CONFIG.baseSpeed + (stageNumber - 1) * CONFIG.speedStep;
-  const hazard = clamp(2 + Math.floor((stageNumber - 1) * 0.9), 2, 9);
+  const hazard = clamp(
+    1 + Math.floor((stageNumber - 1) / CONFIG.hazardStageSpan),
+    1,
+    CONFIG.maxHazardLevel
+  );
   const spacingBase = Math.max(24, 30 - stageNumber);
   const extraOpenChance = Math.max(0.14 - stageNumber * 0.018, 0.04);
   const obstacles = [];
   const branches = [];
   let safeLane = 2;
-  let z = 50;
+  let z = CONFIG.introSafeDistance;
   let rowIndex = 0;
 
-  while (z < length - CONFIG.goalApproachDistance) {
+  while (z < length - CONFIG.finalObstacleBuffer) {
     const rowAdvance = spacingBase + Math.random() * 6 + (rowIndex % 3 === 0 ? 2 : 0);
     safeLane = clamp(safeLane + chooseLaneShift(stageNumber, rowIndex), 0, CONFIG.laneCount - 1);
     const freeLanes = new Set([safeLane]);
@@ -495,16 +747,25 @@ function buildStage(stageNumber) {
   obstacles.sort((left, right) => left.z - right.z);
   const goalLaneDrift = Math.random() < 0.42 ? (Math.random() < 0.5 ? -1 : 1) : 0;
   const goalLane = clamp(safeLane + goalLaneDrift, 1, CONFIG.laneCount - 2);
+  const goalPosition = boardingGuide[goalLane];
 
   return {
     stageNumber,
     theme,
+    service,
+    destination,
+    departureTime,
+    formationLabel: `${theme.carCount}両編成`,
+    rareTrain,
+    boardingGuide,
+    trainAppearance,
     length,
     speed,
     hazard,
     obstacles,
     branches,
-    goalLane
+    goalLane,
+    goalPosition
   };
 }
 
@@ -542,31 +803,32 @@ function updateAudioButton() {
 function updateHud() {
   const spec = state.stageSpec || buildStage(state.stageNumber);
   const remaining = Math.max(0, Math.ceil(spec.length - state.distance));
-  const nextBranch = getNextBranch(spec);
+  const currentPosition = getLaneBoardingPosition(spec, state.player.lane);
   ui.stageValue.textContent = String(state.stageNumber);
-  ui.lineValue.textContent = spec.theme.line;
+  ui.lineValue.textContent = `${spec.theme.line} ${spec.service}`;
   ui.remainingValue.textContent = `${remaining}m`;
   ui.hazardValue.textContent = `Lv.${spec.hazard}`;
   ui.bestValue.textContent = formatStageLabel(state.bestStage);
   if (state.scene === "play") {
     ui.hintText.textContent = remaining <= CONFIG.goalApproachDistance
-      ? formatGoalDoorHint(spec.goalLane)
-      : (nextBranch
-        ? formatBranchHint(Math.max(0, Math.round(nextBranch.z - state.distance)), nextBranch.label)
-        : UI_TEXT.finalStraight);
+      ? `${formatGoalDoorHint(spec)} 現在 ${formatCompactBoardingPosition(currentPosition)} 寄り。`
+      : `次発 ${spec.departureTime} ${formatTrainLabel(spec)}。現在 ${formatCompactBoardingPosition(currentPosition)} 寄り。`;
   }
 }
 
 function updateRoutePanel() {
   const spec = state.stageSpec || buildStage(state.stageNumber);
-  const nextBranch = getNextBranch(spec);
-  ui.routeTitle.textContent = spec.theme.routeTitle;
-  ui.routeText.textContent = nextBranch
-    ? formatRouteHint(Math.max(0, Math.round(nextBranch.z - state.distance)), nextBranch.label)
-    : spec.theme.routeText;
+  const goalPosition = getGoalBoardingPosition(spec);
+  ui.routeTitle.textContent = `${spec.theme.platform} ${formatTrainLabel(spec)}`;
+  ui.routeText.textContent = `${spec.theme.routeText} 次発は${spec.departureTime}発。狙いは${formatBoardingPosition(goalPosition)}、編成は${spec.formationLabel}。${spec.rareTrain ? `${spec.rareTrain.note}が混ざっている。` : `${spec.theme.transfers.join(" / ")}の案内が視界に入る。`}`;
   ui.stationValue.textContent = spec.theme.station;
+  ui.lineBoardValue.textContent = `${spec.theme.line} (${spec.theme.lineCode})`;
   ui.platformValue.textContent = spec.theme.platform;
-  ui.destinationValue.textContent = spec.theme.destination;
+  ui.serviceValue.textContent = spec.service;
+  ui.destinationValue.textContent = spec.destination;
+  ui.boardingValue.textContent = formatBoardingPosition(goalPosition);
+  ui.departureValue.textContent = `${spec.departureTime} 発`;
+  ui.formationValue.textContent = spec.rareTrain ? `${spec.formationLabel} / ${spec.rareTrain.label}` : spec.formationLabel;
 }
 
 function setOverlay(visible) {
@@ -586,12 +848,13 @@ function setScene(sceneName, detailText = "") {
     ui.hintText.textContent = "画面の行きたい位置をタップすると、そのレーンへすぐ寄せます。";
     ui.overlayTag.textContent = "\u99c5\u30c0\u30c3\u30b7\u30e5\u8a66\u4f5c";
     ui.overlayTitle.textContent = "列車のドアまで駅構内を駆け抜けろ";
-    ui.overlayText.textContent = "プレイヤーが前へ走り続け、障害物のないレーンへ自分で飛び込みます。停車中の列車に乗れたらクリア、次のステージでは通路密度と障害物のいやらしさが一段上がります。";
+    ui.overlayText.textContent = "プレイヤーが前へ走り続け、障害物のないレーンへ自分で飛び込みます。種別・行先・停車位置を見て、狙いのドア位置へぴたりと合わせます。";
     ui.primaryButton.textContent = "出発する";
     renderOverlayFacts([
       { label: "視点", value: "三人称ラン" },
       { label: "操作", value: "画面タップ / 指スライド" },
-      { label: "次の列車", value: `${spec.theme.line} ${spec.theme.destination}` }
+      { label: "次の列車", value: `${spec.theme.line} ${formatTrainLabel(spec)}` },
+      { label: "停車位置", value: formatBoardingPosition(getGoalBoardingPosition(spec)) }
     ]);
     setOverlay(true);
     music.setTrack("title");
@@ -615,7 +878,8 @@ function setScene(sceneName, detailText = "") {
     ui.primaryButton.textContent = "次の列車へ";
     renderOverlayFacts([
       { label: "到達駅", value: spec.theme.station },
-      { label: "列車", value: `${spec.theme.line} ${spec.theme.destination}` },
+      { label: "列車", value: `${spec.theme.line} ${formatTrainLabel(spec)}` },
+      { label: "乗車口", value: formatBoardingPosition(getGoalBoardingPosition(spec)) },
       { label: "最高到達", value: formatStageLabel(state.bestStage) }
     ]);
     setOverlay(true);
@@ -632,6 +896,7 @@ function setScene(sceneName, detailText = "") {
   renderOverlayFacts([
     { label: "現在地", value: spec.theme.station },
     { label: "目標ホーム", value: spec.theme.platform },
+    { label: "目標乗車口", value: formatBoardingPosition(getGoalBoardingPosition(spec)) },
     { label: "最高到達", value: formatStageLabel(state.bestStage) }
   ]);
   setOverlay(true);
@@ -681,6 +946,8 @@ function startStage(stageNumber) {
   state.goal.openProgress = 0;
   state.goal.resolveTimer = 0;
   state.goal.pendingText = "";
+  state.audio.approachPlayed = false;
+  state.audio.closingPlayed = false;
   state.player.lane = 2;
   state.player.lean = 0;
   updateHud();
@@ -712,7 +979,7 @@ function completeGoalSequence() {
   state.bestStage = Math.max(state.bestStage, state.stageNumber);
   localStorage.setItem(STORAGE_KEYS.bestStage, String(state.bestStage));
   emitParticles("#9dffb8", 14);
-  music.playCue("clear");
+  music.playCue("departure");
   updateHud();
   setScene("clear", state.goal.pendingText);
 }
@@ -820,6 +1087,16 @@ function updateGame(delta) {
   state.stageElapsed += delta;
   state.distance = Math.min(state.stageSpec.length, state.distance + state.stageSpec.speed * delta);
   state.flashTimer = Math.max(0, state.flashTimer - delta);
+  const remaining = state.stageSpec.length - state.distance;
+
+  if (!state.audio.approachPlayed && remaining <= CONFIG.approachCueDistance) {
+    state.audio.approachPlayed = true;
+    music.playCue("approach");
+  }
+  if (!state.audio.closingPlayed && remaining <= CONFIG.finalCallCueDistance) {
+    state.audio.closingPlayed = true;
+    music.playCue("closing");
+  }
 
   for (const obstacle of state.obstacles) {
     const relativeZ = obstacle.z - state.distance;
@@ -833,10 +1110,11 @@ function updateGame(delta) {
   }
 
   if (state.running && state.distance >= state.stageSpec.length) {
+    const goalPosition = getGoalBoardingPosition(state.stageSpec);
     if (state.player.lane === state.stageSpec.goalLane) {
-      beginGoalSequence(`${goalDoorLabel(state.stageSpec.goalLane)}\u306b\u3074\u305f\u308a\u5408\u308f\u305b\u3066\u4e57\u308a\u8fbc\u3093\u3060\u3002`);
+      beginGoalSequence(`${formatBoardingPosition(goalPosition)}にぴたりと合わせて、${formatTrainLabel(state.stageSpec)}へ滑り込んだ。`);
     } else {
-      finishStage(false, `${goalDoorLabel(state.stageSpec.goalLane)}\u3078\u5408\u308f\u305b\u3089\u308c\u305a\u3001\u4e57\u308a\u640d\u306d\u305f\u3002`);
+      finishStage(false, `${formatBoardingPosition(goalPosition)}へ合わせ切れず、${formatTrainLabel(state.stageSpec)}を見送った。`);
     }
   }
 
@@ -946,35 +1224,103 @@ function drawColumns(relativeZ, width, height) {
   ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
   ctx.fillRect(leftX + 2, baseY - columnHeight, 2, columnHeight);
   ctx.fillRect(rightX + 2, baseY - columnHeight, 2, columnHeight);
+
+  if (projection.depth > 0.28) {
+    const stickerWidth = columnWidth * 2.1;
+    const stickerHeight = columnWidth * 1.1;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.fillRect(leftX - stickerWidth * 0.25, baseY - columnHeight * 0.72, stickerWidth, stickerHeight);
+    ctx.fillRect(rightX - stickerWidth * 0.25, baseY - columnHeight * 0.72, stickerWidth, stickerHeight);
+    ctx.fillStyle = state.stageSpec.trainAppearance.stripe;
+    ctx.fillRect(leftX - stickerWidth * 0.25, baseY - columnHeight * 0.72, stickerWidth, stickerHeight * 0.22);
+    ctx.fillRect(rightX - stickerWidth * 0.25, baseY - columnHeight * 0.72, stickerWidth, stickerHeight * 0.22);
+  }
 }
 
 function drawOverheadSigns(width, height) {
-  [120, 78, 38].forEach((depth, index) => {
-    const relativeZ = depth + index * 22 - (state.distance % 6);
+  const spec = state.stageSpec;
+  const accent = spec.rareTrain ? spec.rareTrain.accent : spec.trainAppearance.stripe;
+  [
+    { depth: 126, kind: "station" },
+    { depth: 88, kind: "departure" },
+    { depth: 46, kind: "boarding" }
+  ].forEach((sign, index) => {
+    const relativeZ = sign.depth + index * 8 - (state.distance % 6);
     if (relativeZ <= 6 || relativeZ >= CONFIG.renderDistance) {
       return;
     }
 
     const projection = projectDepth(relativeZ, width, height);
-    const boardWidth = lerp(40, 170, projection.depth);
-    const boardHeight = lerp(12, 44, projection.depth);
+    const boardWidth = lerp(46, sign.kind === "boarding" ? 188 : 214, projection.depth);
+    const boardHeight = lerp(14, sign.kind === "station" ? 56 : 62, projection.depth);
     const center = roadCenterAtWorldZ(state.distance + relativeZ, projection.width, width);
     const x = center - boardWidth * 0.5;
     const y = projection.y - lerp(52, 220, projection.depth);
 
-    ctx.fillStyle = "rgba(11, 27, 40, 0.94)";
-    ctx.fillRect(x, y, boardWidth, boardHeight);
-    ctx.strokeStyle = "rgba(125, 240, 161, 0.55)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, boardWidth, boardHeight);
+    if (sign.kind === "station") {
+      ctx.fillStyle = "rgba(232, 244, 247, 0.96)";
+      ctx.fillRect(x, y, boardWidth, boardHeight);
+      ctx.fillStyle = accent;
+      ctx.fillRect(x, y + boardHeight * 0.63, boardWidth, boardHeight * 0.18);
+      ctx.strokeStyle = "rgba(11, 27, 40, 0.22)";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(x, y, boardWidth, boardHeight);
+      ctx.fillStyle = "#142738";
+      ctx.textAlign = "center";
+      ctx.font = `${Math.round(lerp(8, 22, projection.depth))}px "Bahnschrift SemiCondensed", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(spec.theme.station, x + boardWidth * 0.5, y + boardHeight * 0.38);
+      ctx.font = `${Math.round(lerp(5, 11, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(spec.theme.stationRoman, x + boardWidth * 0.5, y + boardHeight * 0.56);
+      ctx.fillStyle = "#0f1f2f";
+      ctx.fillText(`${spec.theme.lineCode} ${spec.theme.platform}`, x + boardWidth * 0.5, y + boardHeight * 0.88);
+    }
 
-    ctx.fillStyle = "#dff9ff";
-    ctx.font = `${Math.round(lerp(8, 18, projection.depth))}px "Yu Gothic UI", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(state.stageSpec.theme.platform, x + boardWidth * 0.5, y + boardHeight * 0.46);
-    ctx.fillStyle = "#7df0a1";
-    ctx.font = `${Math.round(lerp(6, 14, projection.depth))}px "Yu Gothic UI", sans-serif`;
-    ctx.fillText(state.stageSpec.theme.line, x + boardWidth * 0.5, y + boardHeight * 0.8);
+    if (sign.kind === "departure") {
+      ctx.fillStyle = "rgba(10, 22, 34, 0.96)";
+      ctx.fillRect(x, y, boardWidth, boardHeight);
+      ctx.strokeStyle = "rgba(255, 209, 102, 0.72)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, boardWidth, boardHeight);
+      ctx.fillStyle = "rgba(255, 209, 102, 0.16)";
+      ctx.fillRect(x + 4, y + 4, boardWidth - 8, boardHeight * 0.28);
+      ctx.fillStyle = "#ffd66f";
+      ctx.textAlign = "left";
+      ctx.font = `${Math.round(lerp(5, 11, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(`NEXT ${spec.departureTime}`, x + boardWidth * 0.07, y + boardHeight * 0.24);
+      ctx.textAlign = "right";
+      ctx.fillText(spec.theme.platform, x + boardWidth * 0.93, y + boardHeight * 0.24);
+      ctx.textAlign = "left";
+      ctx.fillStyle = accent;
+      ctx.fillRect(x + boardWidth * 0.06, y + boardHeight * 0.42, boardWidth * 0.24, boardHeight * 0.24);
+      ctx.fillStyle = "#0c1720";
+      ctx.font = `${Math.round(lerp(6, 13, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(spec.service, x + boardWidth * 0.08, y + boardHeight * 0.58);
+      ctx.fillStyle = "#dff9ff";
+      ctx.font = `${Math.round(lerp(7, 15, projection.depth))}px "Yu Gothic UI", sans-serif`;
+      ctx.fillText(spec.destination, x + boardWidth * 0.34, y + boardHeight * 0.58);
+      ctx.font = `${Math.round(lerp(5, 10, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(spec.rareTrain ? spec.rareTrain.label : spec.theme.line, x + boardWidth * 0.07, y + boardHeight * 0.82);
+    }
+
+    if (sign.kind === "boarding") {
+      const goalPosition = getGoalBoardingPosition(spec);
+      ctx.fillStyle = "rgba(12, 28, 40, 0.98)";
+      ctx.fillRect(x, y, boardWidth, boardHeight);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, boardWidth, boardHeight);
+      ctx.fillStyle = "#dff9ff";
+      ctx.textAlign = "center";
+      ctx.font = `${Math.round(lerp(6, 14, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText("STOP POSITION", x + boardWidth * 0.5, y + boardHeight * 0.28);
+      ctx.fillStyle = accent;
+      ctx.font = `${Math.round(lerp(8, 18, projection.depth))}px "Yu Gothic UI", sans-serif`;
+      ctx.fillText(formatBoardingPosition(goalPosition), x + boardWidth * 0.5, y + boardHeight * 0.65);
+      ctx.fillStyle = "rgba(220, 244, 255, 0.72)";
+      ctx.font = `${Math.round(lerp(5, 10, projection.depth))}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+      ctx.fillText(`${spec.formationLabel} / ${spec.theme.lineCode}`, x + boardWidth * 0.5, y + boardHeight * 0.86);
+    }
+
     ctx.textAlign = "left";
   });
 
@@ -1010,28 +1356,105 @@ function drawOverheadSigns(width, height) {
 }
 
 function drawArrivalTrain(width, height) {
-  const relativeZ = state.stageSpec.length - state.distance + 18;
+  const spec = state.stageSpec;
+  const appearance = spec.trainAppearance;
+  const goalPosition = getGoalBoardingPosition(spec);
+  const relativeZ = spec.length - state.distance + 18;
   if (relativeZ > CONFIG.renderDistance + 12) {
     return;
   }
 
   const projection = projectDepth(Math.max(relativeZ, 6), width, height);
   const trainWidth = lerp(width * 0.18, width * 0.96, projection.depth);
-  const trainHeight = trainWidth * 0.7;
-  const center = roadCenterAtWorldZ(state.stageSpec.length + 18, projection.width, width);
+  const trainHeight = trainWidth * 0.72;
+  const center = roadCenterAtWorldZ(spec.length + 18, projection.width, width);
   const x = center - trainWidth * 0.5;
   const y = projection.y - trainHeight * 0.78;
 
-  ctx.fillStyle = "#b9c9d7";
+  const bodyGradient = ctx.createLinearGradient(x, y, x, y + trainHeight);
+  bodyGradient.addColorStop(0, appearance.roof);
+  bodyGradient.addColorStop(0.18, "#eef4f8");
+  bodyGradient.addColorStop(0.55, appearance.body);
+  bodyGradient.addColorStop(1, appearance.lower);
+  ctx.fillStyle = bodyGradient;
   ctx.fillRect(x, y, trainWidth, trainHeight);
-  ctx.fillStyle = "#12314a";
-  ctx.fillRect(x + trainWidth * 0.08, y + trainHeight * 0.12, trainWidth * 0.84, trainHeight * 0.22);
 
-  const doorWidth = trainWidth * 0.18;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.44)";
+  ctx.fillRect(x + trainWidth * 0.03, y + trainHeight * 0.04, trainWidth * 0.94, trainHeight * 0.05);
+
+  ctx.fillStyle = appearance.stripe;
+  ctx.fillRect(x, y + trainHeight * appearance.stripeOffset, trainWidth, trainHeight * appearance.stripeWidth);
+  ctx.fillStyle = appearance.stripeSecondary;
+  ctx.fillRect(x, y + trainHeight * (appearance.stripeOffset + appearance.stripeWidth + 0.018), trainWidth, trainHeight * 0.028);
+
+  if (appearance.pattern === "wrap") {
+    ctx.save();
+    ctx.globalAlpha = 0.24;
+    ctx.fillStyle = "#ff7ab6";
+    for (let index = -1; index < 6; index += 1) {
+      drawQuad(
+        x + trainWidth * (index * 0.18), y + trainHeight,
+        x + trainWidth * (index * 0.18 + 0.08), y + trainHeight,
+        x + trainWidth * (index * 0.18 + 0.24), y,
+        x + trainWidth * (index * 0.18 + 0.16), y
+      );
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  if (appearance.pattern === "test") {
+    for (let index = 0; index < 7; index += 1) {
+      ctx.fillStyle = index % 2 === 0 ? "#ffd66f" : "#0d1821";
+      ctx.fillRect(x + trainWidth * (0.1 + index * 0.1), y + trainHeight * 0.84, trainWidth * 0.08, trainHeight * 0.05);
+    }
+  }
+
+  if (appearance.face === "bevel") {
+    ctx.fillStyle = appearance.front;
+    drawQuad(
+      x + trainWidth * 0.06, y + trainHeight * 0.12,
+      x + trainWidth * 0.94, y + trainHeight * 0.12,
+      x + trainWidth * 0.86, y + trainHeight * 0.4,
+      x + trainWidth * 0.14, y + trainHeight * 0.4
+    );
+    ctx.fill();
+  } else {
+    ctx.fillStyle = appearance.front;
+    ctx.fillRect(x + trainWidth * 0.08, y + trainHeight * 0.12, trainWidth * 0.84, trainHeight * appearance.windowHeight);
+  }
+
+  ctx.fillStyle = appearance.window;
+  ctx.fillRect(x + trainWidth * 0.12, y + trainHeight * 0.16, trainWidth * 0.76, trainHeight * 0.16);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.fillRect(x + trainWidth * 0.16, y + trainHeight * 0.17, trainWidth * 0.68, trainHeight * 0.04);
+
+  const ledWidth = trainWidth * 0.28;
+  const ledHeight = trainHeight * 0.11;
+  const ledX = x + trainWidth * 0.5 - ledWidth * 0.5;
+  const ledY = y + trainHeight * appearance.ledInset;
+  ctx.fillStyle = "rgba(6, 16, 24, 0.94)";
+  ctx.fillRect(ledX, ledY, ledWidth, ledHeight);
+  ctx.strokeStyle = appearance.ledColor;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(ledX, ledY, ledWidth, ledHeight);
+  ctx.fillStyle = appearance.ledColor;
+  ctx.textAlign = "center";
+  ctx.font = `${Math.round(trainHeight * 0.07)}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+  ctx.fillText(appearance.ledText, ledX + ledWidth * 0.5, ledY + ledHeight * 0.48);
+  ctx.font = `${Math.round(trainHeight * 0.04)}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+  ctx.fillText(appearance.ledSubText, ledX + ledWidth * 0.5, ledY + ledHeight * 0.82);
+
+  const headlightY = y + trainHeight * 0.36;
+  ctx.fillStyle = appearance.light;
+  ctx.fillRect(x + trainWidth * 0.14, headlightY, trainWidth * 0.06, trainHeight * 0.045);
+  ctx.fillRect(x + trainWidth * 0.8, headlightY, trainWidth * 0.06, trainHeight * 0.045);
+
+  const doorWidth = trainWidth * 0.16;
   const doorHeight = trainHeight * 0.48;
-  const doorGap = trainWidth * 0.09;
-  const doorStart = x + trainWidth * 0.14;
-  const goalDoorIndex = clamp((state.stageSpec.goalLane || 2) - 1, 0, 2);
+  const doorGap = trainWidth * appearance.doorGap;
+  const doorStart = x + trainWidth * appearance.doorInset;
+  const goalDoorIndex = clamp((spec.goalLane || 2) - 1, 0, 2);
   const openProgress = state.goal.openProgress;
   for (let index = 0; index < 3; index += 1) {
     const doorX = doorStart + index * (doorWidth + doorGap);
@@ -1052,14 +1475,25 @@ function drawArrivalTrain(width, height) {
       ctx.fillRect(doorX + doorWidth * 0.5 - openingWidth * 0.5, doorY + doorHeight * 0.06, openingWidth, doorHeight * 0.88);
     }
 
-    ctx.fillStyle = isGoalDoor ? "rgba(56, 93, 88, 0.9)" : "rgba(42, 62, 81, 0.9)";
+    ctx.fillStyle = isGoalDoor ? "rgba(56, 93, 88, 0.9)" : appearance.door;
     ctx.fillRect(doorX + doorWidth * 0.02 - slide, doorY, panelWidth, doorHeight);
     ctx.fillRect(doorX + doorWidth * 0.52 + slide, doorY, panelWidth, doorHeight);
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
     ctx.fillRect(doorX + doorWidth * 0.1 - slide, doorY + doorHeight * 0.12, doorWidth * 0.18, doorHeight * 0.7);
     ctx.fillRect(doorX + doorWidth * 0.72 + slide, doorY + doorHeight * 0.12, doorWidth * 0.18, doorHeight * 0.7);
+
+    ctx.fillStyle = isGoalDoor ? "#9dffb8" : "rgba(220, 244, 255, 0.76)";
+    ctx.font = `${Math.round(trainHeight * 0.045)}px "Bahnschrift", "Yu Gothic UI", sans-serif`;
+    ctx.fillText(`${index + 1}\u756a`, doorX + doorWidth * 0.5, doorY - trainHeight * 0.03);
   }
+
+  ctx.fillStyle = "rgba(12, 24, 34, 0.94)";
+  ctx.fillRect(x + trainWidth * 0.34, y + trainHeight * 0.34, trainWidth * 0.32, trainHeight * 0.06);
+  ctx.fillStyle = appearance.ledColor;
+  ctx.font = `${Math.round(trainHeight * 0.05)}px "Yu Gothic UI", sans-serif`;
+  ctx.fillText(spec.destination, x + trainWidth * 0.5, y + trainHeight * 0.385);
+  ctx.textAlign = "left";
 }
 
 function drawObstacle(obstacle, width, height) {
@@ -1206,20 +1640,26 @@ function drawRaceHud(width, height) {
   }
 
   const sweat = getSweatState(state.stageSpec);
-  const nextBranch = getNextBranch(state.stageSpec);
-  const goalDoorAhead = state.distance >= state.stageSpec.length - CONFIG.goalApproachDistance;
+  const goalPosition = getGoalBoardingPosition(state.stageSpec);
   const chips = [
-    { label: UI_TEXT.hudSweat, value: sweat.label, accent: "#79ddff", width: 110 },
+    { label: UI_TEXT.hudSweat, value: sweat.label, accent: "#79ddff", width: 92 },
     {
-      label: UI_TEXT.hudNext,
-      value: goalDoorAhead ? goalDoorLabel(state.stageSpec.goalLane) : (nextBranch ? nextBranch.label : UI_TEXT.hudStraight),
-      accent: goalDoorAhead ? "#7df0a1" : (nextBranch ? (nextBranch.direction < 0 ? "#79ddff" : "#ffd66f") : "#7df0a1"),
-      width: 148
+      label: UI_TEXT.hudTrain,
+      value: formatCompactTrainLabel(state.stageSpec),
+      accent: state.stageSpec.rareTrain ? state.stageSpec.rareTrain.accent : state.stageSpec.trainAppearance.stripe,
+      width: 146
+    },
+    {
+      label: UI_TEXT.hudTarget,
+      value: formatCompactBoardingPosition(goalPosition),
+      accent: "#7df0a1",
+      width: 118
     }
   ];
 
+  let cursorX = 16;
   chips.forEach((chip, index) => {
-    const x = 16 + index * 132;
+    const x = cursorX;
     const y = 18;
     ctx.fillStyle = "rgba(10, 22, 34, 0.82)";
     ctx.fillRect(x, y, chip.width, 40);
@@ -1230,9 +1670,22 @@ function drawRaceHud(width, height) {
     ctx.font = '10px "Yu Gothic UI", sans-serif';
     ctx.fillText(chip.label, x + 10, y + 13);
     ctx.fillStyle = chip.accent;
-    ctx.font = '16px "Yu Gothic UI", sans-serif';
+    ctx.font = chip.width > 130 ? '14px "Yu Gothic UI", sans-serif' : '16px "Yu Gothic UI", sans-serif';
     ctx.fillText(chip.value, x + 10, y + 30);
+    cursorX += chip.width + 10;
   });
+
+  if (state.stageSpec.rareTrain) {
+    const badgeWidth = 76;
+    const badgeX = width - badgeWidth - 16;
+    ctx.fillStyle = "rgba(8, 16, 24, 0.88)";
+    ctx.fillRect(badgeX, 64, badgeWidth, 26);
+    ctx.strokeStyle = state.stageSpec.rareTrain.accent;
+    ctx.strokeRect(badgeX, 64, badgeWidth, 26);
+    ctx.fillStyle = state.stageSpec.rareTrain.accent;
+    ctx.font = '11px "Bahnschrift", "Yu Gothic UI", sans-serif';
+    ctx.fillText(UI_TEXT.rareTrain, badgeX + 9, 81);
+  }
 }
 
 function drawParticles() {

@@ -195,6 +195,15 @@ h2 {
   font-size: 1.08rem;
 }
 
+.mini-stat strong {
+  display: block;
+  line-height: 1.2;
+}
+
+#lineValue {
+  font-size: 0.9rem;
+}
+
 .stage-panel {
   padding: 14px;
 }
@@ -296,6 +305,10 @@ h2 {
   margin-bottom: 20px;
 }
 
+.info-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .overlay-facts div,
 .info-grid div {
   display: flex;
@@ -305,6 +318,13 @@ h2 {
   padding: 11px 12px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.info-grid div {
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 72px;
 }
 
 .overlay-facts dt,
@@ -319,6 +339,11 @@ h2 {
   font-size: 0.95rem;
   font-weight: 700;
   text-align: right;
+}
+
+.info-grid dd {
+  text-align: left;
+  line-height: 1.3;
 }
 
 .primary-button {
@@ -372,6 +397,10 @@ h2 {
 
   .side-column {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
   }
 }
 

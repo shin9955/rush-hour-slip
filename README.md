@@ -17,6 +17,11 @@
 - `web/manifest.webmanifest`: 日本語設定の PWA マニフェスト
 - `web/sw.js`: オフライン用の簡易 Service Worker
 - `web/icon.svg`: 仮アイコン
+- `web/privacy.html`: アプリ内表示と公開 URL 転用を想定したプライバシーポリシー素案
+- `capacitor.config.json`: Android ラップ用の Capacitor 設定
+- `android/`: Play ストア向け Android プロジェクト
+- `package.json`: Capacitor 操作用の npm スクリプト
+- `docs/play-store-capacitor.md`: Android ラップと Play ストア提出の手順
 
 ## ローカル確認
 
@@ -32,3 +37,9 @@
   - パッケージ名と署名
   - プライバシー文言の整理
   - 実機での縦持ち / オフライン確認
+
+## 次の作業
+
+- Play ストア向けの具体手順は `docs/play-store-capacitor.md` を参照
+- 公開用のプライバシーポリシー文面は `web/privacy.html` を土台にする
+- Android Studio を開くときは `npm run android:open` を使える

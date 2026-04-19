@@ -1,0 +1,33 @@
+{
+  "name": "rush-hour-slip",
+  "version": "1.0.0",
+  "description": "満員電車の人波を左右にすり抜けてホームを目指す、Play ストア前提の日本語カジュアルゲーム試作です。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "android:copy": "node node_modules/@capacitor/cli/bin/capacitor copy android",
+    "android:sync": "node node_modules/@capacitor/cli/bin/capacitor sync android",
+    "android:open": "node node_modules/@capacitor/cli/bin/capacitor open android",
+    "android:doctor": "node node_modules/@capacitor/cli/bin/capacitor doctor android",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shin9955/rush-hour-slip.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shin9955/rush-hour-slip/issues"
+  },
+  "homepage": "https://github.com/shin9955/rush-hour-slip#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
+  }
+}

@@ -6,12 +6,17 @@ const STORAGE_KEYS = {
 const CONFIG = {
   laneCount: 5,
   renderDistance: 160,
-  collisionDistance: 18,
-  collisionFootRadius: 12,
-  baseStageLength: 720,
-  stageLengthStep: 144,
+  maxPixelRatio: 2,
+  mobileInputMaxWidth: 960,
+  mobileInputEdgeBleedMin: 24,
+  mobileInputEdgeBleedMax: 60,
+  laneVisualLerp: 14,
+  collisionDistance: 15,
+  collisionFootRadius: 10,
+  baseStageLength: 500,
+  stageLengthStep: 14,
   baseSpeed: 36,
-  speedStep: 4,
+  speedStep: 2,
   columnSpacing: 36,
   playerGroundYRatio: 0.86,
   playerFootOffset: 22,
@@ -311,6 +316,7 @@ const state = {
   },
   player: {
     lane: 2,
+    renderLane: 2,
     lean: 0
   }
 };
@@ -907,7 +913,7 @@ function emitParticles(color, count) {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const roadWidth = width * 0.84;
-  const x = laneCenterAtWorldZ(state.player.lane, state.distance + 6, roadWidth, width);
+  const x = laneCenterAtWorldZ(getPlayerRenderLane(), state.distance + 6, roadWidth, width);
   const y = height * 0.86;
 
   for (let index = 0; index < count; index += 1) {
@@ -949,6 +955,7 @@ function startStage(stageNumber) {
   state.audio.approachPlayed = false;
   state.audio.closingPlayed = false;
   state.player.lane = 2;
+  state.player.renderLane = 2;
   state.player.lean = 0;
   updateHud();
   updateRoutePanel();
@@ -1021,9 +1028,45 @@ function setPlayerLane(nextLane) {
   music.playCue("move");
 }
 
+function getPlayerRenderLane() {
+  return state.player.renderLane;
+}
+
+function isMobileInputLayout() {
+  return window.innerWidth <= CONFIG.mobileInputMaxWidth;
+}
+
+function getLaneInputRect() {
+  const rect = canvas.getBoundingClientRect();
+  if (!isMobileInputLayout()) {
+    return rect;
+  }
+
+  const edgeBleed = clamp(
+    window.innerWidth * 0.06,
+    CONFIG.mobileInputEdgeBleedMin,
+    CONFIG.mobileInputEdgeBleedMax
+  );
+  const left = Math.max(0, rect.left - edgeBleed);
+  const right = Math.min(window.innerWidth, rect.right + edgeBleed);
+
+  return {
+    left,
+    right,
+    top: rect.top,
+    bottom: rect.bottom,
+    width: Math.max(1, right - left),
+    height: rect.height
+  };
+}
+
 function laneFromClientX(clientX) {
   const rect = canvas.getBoundingClientRect();
-  const pointerX = clamp(clientX - rect.left, 0, rect.width);
+  const inputRect = getLaneInputRect();
+  const normalizedX = inputRect.width > 0
+    ? clamp((clientX - inputRect.left) / inputRect.width, 0, 1)
+    : 0.5;
+  const pointerX = normalizedX * rect.width;
   const roadWidth = rect.width * 0.9;
   const worldZ = state.distance + 6;
   let bestLane = 0;
@@ -1041,8 +1084,26 @@ function laneFromClientX(clientX) {
   return bestLane;
 }
 
+function isWithinLaneInputBand(clientX, clientY) {
+  if (!isMobileInputLayout()) {
+    return false;
+  }
+
+  const inputRect = getLaneInputRect();
+  return (
+    clientX >= inputRect.left &&
+    clientX <= inputRect.right &&
+    clientY >= inputRect.top &&
+    clientY <= inputRect.bottom
+  );
+}
+
+function isInteractiveTarget(target) {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select, label"));
+}
+
 function resizeCanvas() {
-  const ratio = window.devicePixelRatio || 1;
+  const ratio = Math.min(window.devicePixelRatio || 1, CONFIG.maxPixelRatio);
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.round(rect.width * ratio);
   canvas.height = Math.round(rect.height * ratio);
@@ -1065,6 +1126,7 @@ function isObstacleInHitZone(relativeZ) {
 }
 
 function updateGame(delta) {
+  state.player.renderLane += (state.player.lane - state.player.renderLane) * Math.min(1, delta * CONFIG.laneVisualLerp);
   state.player.lean += (0 - state.player.lean) * Math.min(1, delta * 14);
 
   if (!state.running) {
@@ -1238,6 +1300,8 @@ function drawColumns(relativeZ, width, height) {
 }
 
 function drawOverheadSigns(width, height) {
+  // Hide in-stage signage to keep the playfield visually clean on mobile.
+  return;
   const spec = state.stageSpec;
   const accent = spec.rareTrain ? spec.rareTrain.accent : spec.trainAppearance.stripe;
   [
@@ -1576,7 +1640,7 @@ function drawObstacle(obstacle, width, height) {
 }
 
 function drawPlayer(width, height) {
-  const x = laneCenterAtWorldZ(state.player.lane, state.distance + 6, width * 0.9, width);
+  const x = laneCenterAtWorldZ(getPlayerRenderLane(), state.distance + 6, width * 0.9, width);
   const y = height * CONFIG.playerGroundYRatio;
   const stride = state.running ? Math.sin(state.stageElapsed * 11) : 0;
   const sweat = getSweatState(state.stageSpec);
@@ -1718,7 +1782,9 @@ function drawScene() {
   }
 
   drawStationBackground(width, height);
-  [...state.obstacles].sort((left, right) => right.z - left.z).forEach((obstacle) => drawObstacle(obstacle, width, height));
+  for (let index = state.obstacles.length - 1; index >= 0; index -= 1) {
+    drawObstacle(state.obstacles[index], width, height);
+  }
   drawParticles();
   drawPlayer(width, height);
   drawRaceHud(width, height);
@@ -1751,6 +1817,25 @@ function handlePrimaryAction() {
 
 function registerInputs() {
   ui.primaryButton.addEventListener("click", handlePrimaryAction);
+  const handleLaneInput = (clientX) => {
+    setPlayerLane(laneFromClientX(clientX));
+  };
+  const handleViewportLaneInput = (event) => {
+    if (
+      !state.running ||
+      event.target === canvas ||
+      isInteractiveTarget(event.target) ||
+      !isWithinLaneInputBand(event.clientX, event.clientY)
+    ) {
+      return false;
+    }
+
+    event.preventDefault();
+    music.activate();
+    state.pointerId = event.pointerId;
+    handleLaneInput(event.clientX);
+    return true;
+  };
 
   ui.audioToggle.addEventListener("click", () => {
     const nextEnabled = !music.enabled;
@@ -1781,9 +1866,10 @@ function registerInputs() {
     if (!state.running) {
       return;
     }
+    event.preventDefault();
     music.activate();
     state.pointerId = event.pointerId;
-    setPlayerLane(laneFromClientX(event.clientX));
+    handleLaneInput(event.clientX);
     canvas.setPointerCapture(event.pointerId);
   });
 
@@ -1791,12 +1877,16 @@ function registerInputs() {
     if (!state.running || state.pointerId !== event.pointerId) {
       return;
     }
-    setPlayerLane(laneFromClientX(event.clientX));
+    event.preventDefault();
+    handleLaneInput(event.clientX);
   });
 
   canvas.addEventListener("pointerup", (event) => {
     if (state.pointerId === event.pointerId) {
       state.pointerId = null;
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
     }
   });
 
@@ -1805,6 +1895,59 @@ function registerInputs() {
       state.pointerId = null;
     }
   });
+
+  canvas.addEventListener("lostpointercapture", () => {
+    state.pointerId = null;
+  });
+
+  window.addEventListener("pointerdown", (event) => {
+    handleViewportLaneInput(event);
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    if (
+      !state.running ||
+      state.pointerId !== event.pointerId ||
+      canvas.hasPointerCapture(event.pointerId) ||
+      !isWithinLaneInputBand(event.clientX, event.clientY)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    handleLaneInput(event.clientX);
+  });
+
+  window.addEventListener("pointerup", (event) => {
+    if (state.pointerId === event.pointerId && !canvas.hasPointerCapture(event.pointerId)) {
+      state.pointerId = null;
+    }
+  });
+
+  window.addEventListener("pointercancel", (event) => {
+    if (state.pointerId === event.pointerId && !canvas.hasPointerCapture(event.pointerId)) {
+      state.pointerId = null;
+    }
+  });
+
+  if (!("PointerEvent" in window)) {
+    canvas.addEventListener("touchstart", (event) => {
+      if (!state.running || event.touches.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      music.activate();
+      handleLaneInput(event.touches[0].clientX);
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", (event) => {
+      if (!state.running || event.touches.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      handleLaneInput(event.touches[0].clientX);
+    }, { passive: false });
+  }
 
   window.addEventListener("resize", resizeCanvas);
 }

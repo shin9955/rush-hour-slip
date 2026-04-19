@@ -7,9 +7,11 @@ const CONFIG = {
   laneCount: 5,
   renderDistance: 160,
   maxPixelRatio: 2,
+  mobileMaxPixelRatio: 1.5,
   mobileInputMaxWidth: 960,
   mobileInputEdgeBleedMin: 24,
   mobileInputEdgeBleedMax: 60,
+  mobileOuterLaneThreshold: 0.28,
   laneVisualLerp: 14,
   collisionDistance: 15,
   collisionFootRadius: 10,
@@ -300,6 +302,7 @@ const state = {
   stageElapsed: 0,
   flashTimer: 0,
   bestStage: Number.parseInt(localStorage.getItem(STORAGE_KEYS.bestStage) || "1", 10),
+  lastHudKey: "",
   pointerId: null,
   obstacles: [],
   particles: [],
@@ -801,15 +804,32 @@ function getSweatState(spec = state.stageSpec) {
   return { label: UI_TEXT.sweatMax, count: 4, color: "rgba(196, 244, 255, 0.96)" };
 }
 
+function setTextIfChanged(element, nextText) {
+  if (element.textContent !== nextText) {
+    element.textContent = nextText;
+  }
+}
+
+function setAttributeIfChanged(element, attributeName, nextValue) {
+  if (element.getAttribute(attributeName) !== nextValue) {
+    element.setAttribute(attributeName, nextValue);
+  }
+}
+
 function updateAudioButton() {
-  ui.audioToggle.setAttribute("aria-pressed", String(music.enabled));
-  ui.audioToggle.textContent = music.enabled ? "BGM \u5165" : "BGM \u5207";
+  setAttributeIfChanged(ui.audioToggle, "aria-pressed", String(music.enabled));
+  setTextIfChanged(ui.audioToggle, music.enabled ? "BGM \u5165" : "BGM \u5207");
 }
 
 function updateHud() {
   const spec = state.stageSpec || buildStage(state.stageNumber);
   const remaining = Math.max(0, Math.ceil(spec.length - state.distance));
   const currentPosition = getLaneBoardingPosition(spec, state.player.lane);
+  const hudKey = `${state.scene}|${state.stageNumber}|${remaining}|${state.player.lane}|${state.bestStage}|${spec.hazard}|${spec.theme.lineCode}|${spec.service}|${spec.destination}|${spec.departureTime}|${currentPosition.door}|${spec.rareTrain ? spec.rareTrain.id : "normal"}`;
+  if (state.lastHudKey === hudKey) {
+    return;
+  }
+  state.lastHudKey = hudKey;
   ui.stageValue.textContent = String(state.stageNumber);
   ui.lineValue.textContent = `${spec.theme.line} ${spec.service}`;
   ui.remainingValue.textContent = `${remaining}m`;
@@ -1066,6 +1086,16 @@ function laneFromClientX(clientX) {
   const normalizedX = inputRect.width > 0
     ? clamp((clientX - inputRect.left) / inputRect.width, 0, 1)
     : 0.5;
+
+  if (isMobileInputLayout()) {
+    if (normalizedX <= CONFIG.mobileOuterLaneThreshold) {
+      return 0;
+    }
+    if (normalizedX >= 1 - CONFIG.mobileOuterLaneThreshold) {
+      return CONFIG.laneCount - 1;
+    }
+  }
+
   const pointerX = normalizedX * rect.width;
   const roadWidth = rect.width * 0.9;
   const worldZ = state.distance + 6;
@@ -1103,7 +1133,8 @@ function isInteractiveTarget(target) {
 }
 
 function resizeCanvas() {
-  const ratio = Math.min(window.devicePixelRatio || 1, CONFIG.maxPixelRatio);
+  const maxRatio = isMobileInputLayout() ? CONFIG.mobileMaxPixelRatio : CONFIG.maxPixelRatio;
+  const ratio = Math.min(window.devicePixelRatio || 1, maxRatio);
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.round(rect.width * ratio);
   canvas.height = Math.round(rect.height * ratio);
@@ -1186,7 +1217,6 @@ function updateGame(delta) {
 
   updateParticles(delta);
   updateHud();
-  updateRoutePanel();
 }
 
 function drawQuad(x1, y1, x2, y2, x3, y3, x4, y4) {

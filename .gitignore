@@ -10,5 +10,7 @@ coverage/
 android/local.properties
 android/.gradle/
 .gradle-user-home/
+.android-user-home/
+.android-sdk-home/
 android/upload-keystore.jks
 .edge-headless/
